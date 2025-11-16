@@ -15,6 +15,7 @@
     ns.installNextGameButton && ns.installNextGameButton();
     ns.injectSteamGuessingGame && ns.injectSteamGuessingGame();
     ns.coopUI && ns.coopUI.install && ns.coopUI.install();
+    ns.setupGlobalReplyCountListener && ns.setupGlobalReplyCountListener();
   }
 
   // Initial run

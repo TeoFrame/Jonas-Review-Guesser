@@ -1,6 +1,6 @@
 /**
  * Co-op UI - Phase 2: UI controls and connection functionality
- * Adds Share, Join, Disconnect, and Reset buttons to the Steam page
+ * Adds Join and Disconnect buttons to the Steam page
  */
 
 (function (root) {
@@ -14,7 +14,6 @@
     container: null,
     buttonsContainer: null,
     statusElement: null,
-    roomCodeElement: null,
     isInstalled: false,
     serverUrl: DEFAULT_SERVER_URL,
   };
@@ -74,17 +73,6 @@
     statusDiv.textContent = 'Not connected';
     uiState.statusElement = statusDiv;
 
-    // Room code display (hidden when not connected)
-    const roomCodeDiv = document.createElement('div');
-    roomCodeDiv.className = 'ext-coop-room-code';
-    roomCodeDiv.style.cssText = `
-      margin-bottom: 8px;
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.6);
-      display: none;
-    `;
-    uiState.roomCodeElement = roomCodeDiv;
-
     // Buttons container
     const buttonsDiv = document.createElement('div');
     buttonsDiv.className = 'ext-coop-buttons';
@@ -96,7 +84,6 @@
     uiState.buttonsContainer = buttonsDiv;
 
     container.appendChild(statusDiv);
-    container.appendChild(roomCodeDiv);
     container.appendChild(buttonsDiv);
 
     return container;
@@ -148,27 +135,25 @@
   function updateStatus(status) {
     if (!uiState.statusElement) return;
 
-    const { isConnected, roomId, isHost, connectionId } = status;
-
-    if (isConnected) {
-      uiState.statusElement.textContent = isHost 
-        ? `🟢 Host - Room: ${roomId}` 
-        : `🟡 Client - Room: ${roomId}`;
-      uiState.statusElement.style.color = isHost ? '#4caf50' : '#ffa726';
-      
-      // Show room code
-      if (uiState.roomCodeElement) {
-        uiState.roomCodeElement.textContent = `Room Code: ${roomId}`;
-        uiState.roomCodeElement.style.display = 'block';
+    const { isConnected, roomId } = status;
+    
+    // Get online user count from gameState
+    let onlineCount = 0;
+    if (isConnected && ns.coop && ns.coop.getState) {
+      const state = ns.coop.getState();
+      if (state.gameState && state.gameState.users) {
+        const allUsers = Object.values(state.gameState.users);
+        onlineCount = allUsers.filter(u => u.isOnline).length;
       }
+    }
+
+    if (isConnected && roomId) {
+      const onlineText = onlineCount > 0 ? ` - ${onlineCount} online` : '';
+      uiState.statusElement.textContent = `🟢 Connected - Room: ${roomId}${onlineText}`;
+      uiState.statusElement.style.color = '#4caf50';
     } else {
       uiState.statusElement.textContent = 'Not connected';
       uiState.statusElement.style.color = 'rgba(255, 255, 255, 0.7)';
-      
-      // Hide room code
-      if (uiState.roomCodeElement) {
-        uiState.roomCodeElement.style.display = 'none';
-      }
     }
   }
 
@@ -195,11 +180,7 @@
 
     try {
       const serverUrl = await getServerUrl();
-      showMessage(`Joining room ${trimmedCode}...`, 'info');
-      
       await ns.coop.connect(trimmedCode, serverUrl);
-      
-      showMessage(`Joined room: ${trimmedCode}`, 'success');
       updateStatus(ns.coop.getStatus());
     } catch (error) {
       console.error('[Co-op UI] Failed to join room:', error);
@@ -214,30 +195,10 @@
     if (!ns.coop) return;
 
     ns.coop.disconnect();
-    showMessage('Disconnected', 'info');
+    // Disconnected - no toast message
     updateStatus(ns.coop.getStatus());
   }
 
-  /**
-   * Handle Reset button click (reset leaderboard)
-   */
-  function handleReset() {
-    if (!ns.coop) return;
-
-    const state = ns.coop.getState();
-    if (!state.client || !state.isConnected) {
-      showMessage('Not connected', 'error');
-      return;
-    }
-
-    if (!state.isHost) {
-      showMessage('Only the host can reset the leaderboard', 'error');
-      return;
-    }
-
-    state.client.sendResetLeaderboard();
-    showMessage('Leaderboard reset', 'success');
-  }
 
   /**
    * Show temporary message to user
@@ -304,23 +265,20 @@
     // Create buttons
     const joinBtn = createButton('Join', 'ext-coop-join', handleJoin);
     const disconnectBtn = createButton('Disconnect', 'ext-coop-disconnect', handleDisconnect);
-    const resetBtn = createButton('Reset', 'ext-coop-reset', handleReset);
 
     // Initially show only Join button (not connected)
     joinBtn.style.display = 'inline-block';
     disconnectBtn.style.display = 'none';
-    resetBtn.style.display = 'none';
 
     // Add buttons to container
     uiState.buttonsContainer.appendChild(joinBtn);
     uiState.buttonsContainer.appendChild(disconnectBtn);
-    uiState.buttonsContainer.appendChild(resetBtn);
 
     // Insert UI container after Next Game buttons
     container.appendChild(uiContainer);
 
     // Set up connection status listener
-    setupStatusListener(joinBtn, disconnectBtn, resetBtn);
+    setupStatusListener(joinBtn, disconnectBtn);
 
     uiState.isInstalled = true;
     console.log('[Co-op UI] UI installed');
@@ -330,7 +288,7 @@
   /**
    * Set up listener for connection status changes
    */
-  function setupStatusListener(joinBtn, disconnectBtn, resetBtn) {
+  function setupStatusListener(joinBtn, disconnectBtn) {
     if (!ns.coop) return;
 
     const updateButtons = () => {
@@ -341,16 +299,13 @@
       
       // Show/hide buttons based on connection status
       if (isConnected) {
-        // Connected: show Disconnect and Reset (if host)
+        // Connected: show Disconnect
         joinBtn.style.display = 'none';
         disconnectBtn.style.display = 'inline-block';
-        resetBtn.style.display = status.isHost ? 'inline-block' : 'none';
-        resetBtn.disabled = !status.isHost;
       } else {
         // Not connected: show Join only
         joinBtn.style.display = 'inline-block';
         disconnectBtn.style.display = 'none';
-        resetBtn.style.display = 'none';
       }
     };
 
@@ -359,6 +314,17 @@
 
     // Listen for status change events
     window.addEventListener('coop-status-change', (event) => {
+      updateButtons();
+    });
+    
+    // Also listen for game state updates to update online count
+    window.addEventListener('coop-reply-counts-update', (event) => {
+      updateButtons();
+    });
+    window.addEventListener('coop-next-game-vote-update', (event) => {
+      updateButtons();
+    });
+    window.addEventListener('coop-next-game-selected', (event) => {
       updateButtons();
     });
 

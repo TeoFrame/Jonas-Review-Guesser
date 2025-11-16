@@ -228,6 +228,9 @@
 
   // Expose on namespace
   ns.getReleasedAppIds = getReleasedAppIds;
+  ns.getPureRandomAppId = getPureRandomAppId;
+  ns.getSmartRandomAppId = getSmartRandomAppId;
+  ns.navigateToRandomApp = navigateToRandomApp;
   ns.installNextGameButtonOnOops = installNextGameButtonOnOops;
   ns.installNextGameButton = installNextGameButton;
 })(window);

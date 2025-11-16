@@ -8,7 +8,7 @@ class WebSocketClient {
     this.ws = null;
     this.connectionId = null;
     this.roomId = null;
-    this.isHost = false;
+    this.userId = null; // Store userId for reconnection
     this.isConnected = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
@@ -21,15 +21,30 @@ class WebSocketClient {
    * Connect to WebSocket server
    * @param {string} serverUrl - WebSocket server URL (e.g., 'ws://localhost:8080' or 'wss://your-server.com')
    * @param {string} roomId - Room ID to join
+   * @param {string} userId - Optional persistent user ID for reconnection
    * @returns {Promise<void>}
    */
-  async connect(serverUrl, roomId) {
+  async connect(serverUrl, roomId, userId = null) {
     return new Promise((resolve, reject) => {
       try {
         this.serverUrl = serverUrl;
         this.roomId = roomId;
-        const url = `${serverUrl}?room=${encodeURIComponent(roomId)}`;
+        // Store userId for reconnection
+        if (userId && typeof userId === 'string' && userId.trim() !== '') {
+          this.userId = userId;
+        } else if (userId) {
+          console.warn('[WebSocket] Invalid userId provided, storing anyway:', userId);
+          this.userId = userId;
+        }
         
+        let url = `${serverUrl}?room=${encodeURIComponent(roomId)}`;
+        if (this.userId && typeof this.userId === 'string' && this.userId.trim() !== '') {
+          url += `&userId=${encodeURIComponent(this.userId)}`;
+        } else {
+          console.warn('[WebSocket] userId is invalid, not including in URL:', this.userId);
+        }
+        
+        console.log('[WebSocket] Connecting with URL:', url);
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
@@ -60,16 +75,19 @@ class WebSocketClient {
           this.isConnected = false;
           this.emit('close');
           
-          // Attempt to reconnect if not intentionally closed
-          if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-            console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})...`);
-            setTimeout(() => {
-              this.connect(serverUrl, roomId).catch(console.error);
-            }, delay);
+          // Only emit reconnect-needed if this wasn't an intentional disconnect
+          // Check if reconnectAttempts is less than max (meaning we didn't intentionally stop reconnecting)
+          if (this.reconnectAttempts < this.maxReconnectAttempts && this.serverUrl && this.roomId) {
+            // Attempt to reconnect if not intentionally closed
+            // Note: We let coopManager handle reconnection with userId, so we don't auto-reconnect here
+            // This prevents reconnection without userId
+            this.emit('reconnect-needed', {
+              serverUrl: this.serverUrl,
+              roomId: this.roomId,
+              userId: this.userId
+            });
           } else {
-            this.emit('reconnect-failed');
+            console.log('[WebSocket] Not emitting reconnect-needed (intentional disconnect or max attempts reached)');
           }
         };
       } catch (error) {
@@ -89,7 +107,6 @@ class WebSocketClient {
       this.isConnected = false;
       this.connectionId = null;
       this.roomId = null;
-      this.isHost = false;
     }
   }
 
@@ -113,7 +130,6 @@ class WebSocketClient {
     switch (data.type) {
       case 'connected':
         this.connectionId = data.connectionId;
-        this.isHost = data.isHost;
         this.emit('connected', data);
         break;
       case 'user-joined':
@@ -137,8 +153,14 @@ class WebSocketClient {
       case 'leaderboard-reset':
         this.emit('leaderboard-reset', data);
         break;
-      case 'host-migrated':
-        this.emit('host-migrated', data);
+      case 'next-game-vote-update':
+        this.emit('next-game-vote-update', data);
+        break;
+      case 'next-game-selected':
+        this.emit('next-game-selected', data);
+        break;
+      case 'reply-counts-update':
+        this.emit('reply-counts-update', data);
         break;
       case 'error':
         this.emit('error', data);
@@ -223,6 +245,19 @@ class WebSocketClient {
   sendNextGame(gameId) {
     this.send({
       type: 'next-game',
+      gameId: gameId,
+    });
+  }
+
+  /**
+   * Vote for next game option
+   * @param {string} option - Vote option: 'raw' or 'smart'
+   * @param {string} gameId - Optional game ID for the selected option
+   */
+  sendNextGameVote(option, gameId = null) {
+    this.send({
+      type: 'next-game-vote',
+      option: option,
       gameId: gameId,
     });
   }

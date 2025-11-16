@@ -6,18 +6,21 @@
   "content_scripts": [
     {
       "matches": [
-        "*://store.steampowered.com/app/*"
+        "*://store.steampowered.com/app/*",
+        "*://store.steampowered.com/agecheck/app/*"
       ],
       "js": [
         "src/siteRules.js",
         "src/utils.js",
         "src/pageDetection.js",
         "src/reviewCounts.js",
+        "src/seededRandom.js",
         "src/guessingGame.js",
         "src/nextGame.js",
         "src/websocketClient.js",
         "src/coopManager.js",
         "src/coopUI.js",
+        "src/coopNextGame.js",
         "src/main.js"
       ],
       "css": ["content.css"],

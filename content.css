@@ -61,6 +61,11 @@
   border-color: #8b1d1d !important;
   color: #fff !important;
 }
+.ext-steam-guess button.user-selected {
+  background: rgba(255, 193, 7, 0.3) !important;
+  border-color: rgba(255, 193, 7, 0.6) !important;
+  box-shadow: 0 0 8px rgba(255, 193, 7, 0.4);
+}
 
 .ext-steam-guess .ext-subtle {
   grid-column: 1/-1;

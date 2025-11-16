@@ -34,12 +34,13 @@ Native WebSocket server using Node.js and the `ws` library. Simple, lightweight,
 - [x] Handle connection errors and reconnection
 
 ## Phase 3: Host/Client Role Management
-- [ ] Detect and assign host role (first user in room)
-- [ ] Implement client role assignment
-- [ ] For clients: hide Next buttons
-- [ ] For clients: show only Stats and Disconnect buttons
-- [ ] For host: enable Next buttons to navigate games
-- [ ] Sync game navigation from host to all clients
+- [x] Detect and assign host role (first user in room)
+- [x] Implement client role assignment
+- [x] For clients: hide Next buttons
+- [x] For clients: show status display and Disconnect button
+- [x] For host: enable Next buttons to navigate games
+- [x] Sync game navigation from host to all clients
+- [x] Automatic host migration when host disconnects
 
 ## Phase 4: User Reply Counter
 - [ ] Track user ready/reply states
