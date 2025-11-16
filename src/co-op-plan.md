@@ -5,8 +5,7 @@
 This plan outlines the implementation of multiplayer co-op functionality for the Jonas Review Guesser Chrome extension using native WebSockets. The extension will support real-time collaborative gameplay where users can share game sessions, compete on a leaderboard, and track each other's progress.
 
 **Key Features:**
-- Automatic session hosting when user clicks "Share"
-- Join functionality via room codes
+- Join functionality via room codes (first user becomes host)
 - Role-based UI (Host controls navigation, Clients follow along)
 - Real-time leaderboard tracking correct guesses
 - User reply counter showing participation
@@ -28,10 +27,9 @@ Native WebSocket server using Node.js and the `ws` library. Simple, lightweight,
 - [ ] Deploy server (Railway/Render/etc.)
 
 ## Phase 2: Basic Connection Functionality
-- [x] Add UI controls (Share, Join, Reset, Disconnect buttons)
-- [x] Implement room creation for host
-- [x] Generate shareable room codes
-- [x] Implement join room functionality for clients
+- [x] Add UI controls (Join, Reset, Disconnect buttons)
+- [x] Implement room joining (first user becomes host automatically)
+- [x] Implement join room functionality with room code input
 - [x] Add connection state management
 - [x] Handle connection errors and reconnection
 

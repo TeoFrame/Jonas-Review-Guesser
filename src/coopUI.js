@@ -172,31 +172,6 @@
     }
   }
 
-  /**
-   * Handle Share button click (create room)
-   */
-  async function handleShare() {
-    if (!ns.coop) {
-      console.error('[Co-op UI] Co-op manager not available');
-      showMessage('Error: Co-op manager not loaded', 'error');
-      return;
-    }
-
-    try {
-      const serverUrl = await getServerUrl();
-      const roomCode = generateRoomCode();
-      
-      showMessage(`Connecting to room ${roomCode}...`, 'info');
-      
-      await ns.coop.connect(roomCode, serverUrl);
-      
-      showMessage(`Room created! Share code: ${roomCode}`, 'success');
-      updateStatus(ns.coop.getStatus());
-    } catch (error) {
-      console.error('[Co-op UI] Failed to create room:', error);
-      showMessage(`Failed to connect: ${error.message}`, 'error');
-    }
-  }
 
   /**
    * Handle Join button click (join existing room)
@@ -327,17 +302,16 @@
     uiState.container = uiContainer;
 
     // Create buttons
-    const shareBtn = createButton('Share', 'ext-coop-share', handleShare);
     const joinBtn = createButton('Join', 'ext-coop-join', handleJoin);
     const disconnectBtn = createButton('Disconnect', 'ext-coop-disconnect', handleDisconnect);
     const resetBtn = createButton('Reset', 'ext-coop-reset', handleReset);
 
-    // Initially disable disconnect and reset
-    disconnectBtn.disabled = true;
-    resetBtn.disabled = true;
+    // Initially show only Join button (not connected)
+    joinBtn.style.display = 'inline-block';
+    disconnectBtn.style.display = 'none';
+    resetBtn.style.display = 'none';
 
     // Add buttons to container
-    uiState.buttonsContainer.appendChild(shareBtn);
     uiState.buttonsContainer.appendChild(joinBtn);
     uiState.buttonsContainer.appendChild(disconnectBtn);
     uiState.buttonsContainer.appendChild(resetBtn);
@@ -346,7 +320,7 @@
     container.appendChild(uiContainer);
 
     // Set up connection status listener
-    setupStatusListener(shareBtn, joinBtn, disconnectBtn, resetBtn);
+    setupStatusListener(joinBtn, disconnectBtn, resetBtn);
 
     uiState.isInstalled = true;
     console.log('[Co-op UI] UI installed');
@@ -356,7 +330,7 @@
   /**
    * Set up listener for connection status changes
    */
-  function setupStatusListener(shareBtn, joinBtn, disconnectBtn, resetBtn) {
+  function setupStatusListener(joinBtn, disconnectBtn, resetBtn) {
     if (!ns.coop) return;
 
     const updateButtons = () => {
@@ -364,10 +338,20 @@
       updateStatus(status);
 
       const isConnected = status.isConnected;
-      shareBtn.disabled = isConnected;
-      joinBtn.disabled = isConnected;
-      disconnectBtn.disabled = !isConnected;
-      resetBtn.disabled = !isConnected || !status.isHost;
+      
+      // Show/hide buttons based on connection status
+      if (isConnected) {
+        // Connected: show Disconnect and Reset (if host)
+        joinBtn.style.display = 'none';
+        disconnectBtn.style.display = 'inline-block';
+        resetBtn.style.display = status.isHost ? 'inline-block' : 'none';
+        resetBtn.disabled = !status.isHost;
+      } else {
+        // Not connected: show Join only
+        joinBtn.style.display = 'inline-block';
+        disconnectBtn.style.display = 'none';
+        resetBtn.style.display = 'none';
+      }
     };
 
     // Update immediately

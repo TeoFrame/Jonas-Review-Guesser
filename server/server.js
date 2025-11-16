@@ -161,13 +161,17 @@ wss.on('connection', (ws, req) => {
     console.log(`Connection closed: ${connectionId}`);
     
     const user = state.users[connectionId];
+    let newHostId = null;
+    
     if (user) {
       // If host disconnected, assign new host (first remaining user)
       if (user.role === "host") {
         const remainingUsers = Object.values(state.users).filter(u => u.id !== connectionId);
         if (remainingUsers.length > 0) {
-          state.hostId = remainingUsers[0].id;
+          newHostId = remainingUsers[0].id;
+          state.hostId = newHostId;
           remainingUsers[0].role = "host";
+          console.log(`Host migrated to: ${newHostId}`);
         } else {
           state.hostId = "";
         }
@@ -188,6 +192,32 @@ wss.on('connection', (ws, req) => {
         hostId: state.hostId,
       },
     });
+
+    // If host was migrated, notify the new host specifically
+    if (newHostId) {
+      // Find the WebSocket connection for the new host
+      const newHostClient = Array.from(clients).find(c => {
+        // connectionId is stored on the WebSocket object
+        return c.connectionId === newHostId;
+      });
+      
+      if (newHostClient && newHostClient.readyState === 1) { // 1 = OPEN
+        newHostClient.send(JSON.stringify({
+          type: "host-migrated",
+          connectionId: newHostId,
+          role: "host",
+          isHost: true,
+          gameState: {
+            currentGameId: state.currentGameId,
+            users: state.users,
+            hostId: state.hostId,
+          },
+        }));
+        console.log(`Notified new host: ${newHostId}`);
+      } else {
+        console.warn(`Could not notify new host ${newHostId} - client not found or not open`);
+      }
+    }
 
     // Clean up empty rooms
     if (clients.size === 0) {

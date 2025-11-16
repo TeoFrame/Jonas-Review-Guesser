@@ -137,6 +137,9 @@ class WebSocketClient {
       case 'leaderboard-reset':
         this.emit('leaderboard-reset', data);
         break;
+      case 'host-migrated':
+        this.emit('host-migrated', data);
+        break;
       case 'error':
         this.emit('error', data);
         break;

@@ -79,6 +79,34 @@
     coopState.client.on('user-disconnected', (data) => {
       console.log('[Co-op] User disconnected:', data.connectionId);
       coopState.gameState = data.gameState;
+      
+      // Check if we became the new host
+      if (data.gameState && data.gameState.hostId === coopState.connectionId && !coopState.isHost) {
+        coopState.isHost = true;
+        console.log('[Co-op] You are now the host!');
+        
+        // Show notification to user
+        if (ns.coopUI && ns.coopUI.showMessage) {
+          ns.coopUI.showMessage('You are now the host!', 'success');
+        }
+        
+        emitStatusChange();
+      }
+    });
+
+    // Host migrated (we became the new host)
+    coopState.client.on('host-migrated', (data) => {
+      console.log('[Co-op] Host migrated - you are now the host!');
+      coopState.connectionId = data.connectionId;
+      coopState.isHost = true;
+      coopState.gameState = data.gameState;
+      
+      // Show notification to user
+      if (ns.coopUI && ns.coopUI.showMessage) {
+        ns.coopUI.showMessage('You are now the host!', 'success');
+      }
+      
+      emitStatusChange();
     });
 
     // Connection closed
