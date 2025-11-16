@@ -1,8 +1,8 @@
-﻿# PartyKit Co-op Implementation Plan
+﻿# WebSocket Co-op Implementation Plan
 
 ## Summary
 
-This plan outlines the implementation of multiplayer co-op functionality for the Jonas Review Guesser Chrome extension using PartyKit. The extension will support real-time collaborative gameplay where users can share game sessions, compete on a leaderboard, and track each other's progress.
+This plan outlines the implementation of multiplayer co-op functionality for the Jonas Review Guesser Chrome extension using native WebSockets. The extension will support real-time collaborative gameplay where users can share game sessions, compete on a leaderboard, and track each other's progress.
 
 **Key Features:**
 - Automatic session hosting when user clicks "Share"
@@ -10,19 +10,22 @@ This plan outlines the implementation of multiplayer co-op functionality for the
 - Role-based UI (Host controls navigation, Clients follow along)
 - Real-time leaderboard tracking correct guesses
 - User reply counter showing participation
-- Free hosting via PartyKit's tier
+- Simple WebSocket server (deployable to Railway, Render, etc.)
 
 **Technical Approach:**
-PartyKit provides WebSocket-based real-time synchronization with minimal setup, making it ideal for this multiplayer guessing game extension.
+Native WebSocket server using Node.js and the `ws` library. Simple, lightweight, and easy to deploy to any Node.js hosting platform.
 
 ---
 
-## Phase 1: PartyKit Configuration
-- [x] Create PartyKit account and project
-- [x] Install PartyKit dependencies
-- [x] Set up PartyKit server configuration
-- [x] Configure connection endpoints
-- [x] Deploy PartyKit server
+## Phase 1: WebSocket Server Setup
+- [x] Create WebSocket server with Node.js
+- [x] Implement room-based multiplayer logic
+- [x] Set up host/client role management
+- [x] Configure message protocol
+- [x] Create WebSocket client module
+- [x] Create co-op manager for connection handling
+- [x] Add client-side connection testing
+- [ ] Deploy server (Railway/Render/etc.)
 
 ## Phase 2: Basic Connection Functionality
 - [ ] Add UI controls (Share, Join, Reset, Disconnect buttons)
