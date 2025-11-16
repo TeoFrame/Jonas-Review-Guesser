@@ -22,6 +22,9 @@
     }
   ],
   "permissions": [],
+  "host_permissions": [
+    "https://*.partykit.dev/*"
+  ],
   "web_accessible_resources": [
     {
       "resources": [
