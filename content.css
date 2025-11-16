@@ -94,9 +94,52 @@
   font-weight: 600;
 }
 
-/* Small gap between our two Next Game buttons */
-.ext-next-game + .ext-next-game {
-  margin-left: 8px;
+/* Next Game buttons - match connection panel styling */
+.ext-next-game {
+  display: inline-block;
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: 600 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.06s ease;
+  text-decoration: none;
+  margin-right: 8px;
+}
+
+.ext-next-game:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+  color: #fff;
+  text-decoration: none;
+}
+
+.ext-next-game:disabled,
+.ext-next-game[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ext-next-game:disabled:hover,
+.ext-next-game[disabled]:hover {
+  transform: none !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Remove Steam's default button styling */
+.ext-next-game.btnv6_blue_hoverfade {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 4px !important;
+  padding: 8px 16px !important;
+}
+
+.ext-next-game.btnv6_blue_hoverfade:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  transform: translateY(-1px) !important;
 }
 
 /* Co-op UI styles */

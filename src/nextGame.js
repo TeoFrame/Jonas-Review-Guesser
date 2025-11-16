@@ -145,15 +145,12 @@
    * @returns {HTMLAnchorElement}
    */
   function makeNextGameButton(label, mode) {
-    const a = document.createElement("a");
-    a.className = "btnv6_blue_hoverfade btn_medium ext-next-game";
-    a.href = "#";
+    const button = document.createElement("button");
+    button.className = "ext-next-game";
+    button.type = "button";
+    button.textContent = label;
 
-    const span = document.createElement("span");
-    span.textContent = label;
-    a.appendChild(span);
-
-    a.addEventListener(
+    button.addEventListener(
       "click",
       (e) => {
         e.preventDefault();
@@ -162,7 +159,7 @@
       { passive: false }
     );
 
-    return a;
+    return button;
   }
 
   // ---------------------------------------------------------------------------
