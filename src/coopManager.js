@@ -217,8 +217,19 @@
     // Next game vote updated
     coopState.client.on('next-game-vote-update', (data) => {
       console.log('[Co-op] Next game vote updated:', data);
+      // Update gameState, merging with existing state to preserve other fields
       if (data.gameState) {
-        coopState.gameState = data.gameState;
+        if (coopState.gameState) {
+          // Merge the update into existing gameState
+          coopState.gameState = {
+            ...coopState.gameState,
+            ...data.gameState,
+            // Ensure nextGameVotes is updated
+            nextGameVotes: data.gameState.nextGameVotes || data.nextGameVotes || coopState.gameState.nextGameVotes,
+          };
+        } else {
+          coopState.gameState = data.gameState;
+        }
       }
       // Dispatch event for UI updates
       window.dispatchEvent(new CustomEvent('coop-next-game-vote-update', {

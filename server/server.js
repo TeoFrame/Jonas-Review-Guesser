@@ -413,23 +413,27 @@ function handleNextGameVote(data, ws, state, clients) {
   const onlineUsers = allUsers.filter(u => u.isOnline);
   const allVoted = onlineUsers.length > 0 && onlineUsers.every(u => u.nextGameVote !== null);
   
-    // Broadcast vote update
-    broadcast(clients, {
+    // Broadcast vote update to all clients including the sender
+    // (so the sender sees their own vote reflected in the counter)
+    const voteUpdateMessage = {
       type: "next-game-vote-update",
       userId: userId,
       connectionId: ws.connectionId,
       userName: user.name,
-    vote: voteOption,
-    nextGameVotes: { ...state.nextGameVotes },
-    allVoted: allVoted,
-    gameState: {
-      currentGameId: state.currentGameId,
-      users: state.users,
-      replyCounts: { ...state.replyCounts },
+      vote: voteOption,
       nextGameVotes: { ...state.nextGameVotes },
-      nextGameIds: { ...state.nextGameIds },
-    },
-  }, ws);
+      allVoted: allVoted,
+      gameState: {
+        currentGameId: state.currentGameId,
+        users: state.users,
+        replyCounts: { ...state.replyCounts },
+        nextGameVotes: { ...state.nextGameVotes },
+        nextGameIds: { ...state.nextGameIds },
+      },
+    };
+    
+    // Broadcast to all clients (including sender) so everyone sees the updated vote count
+    broadcast(clients, voteUpdateMessage);
   
   // If all users voted, select the option with most votes and activate after 1s
   if (allVoted && !state.selectedNextGame) {

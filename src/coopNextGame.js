@@ -52,9 +52,12 @@
         }
         
         // Enable buttons only if user has replied
-        const userHasReplied = gameState.users && gameState.users[status.connectionId] 
-          ? gameState.users[status.connectionId].hasReplied 
-          : false;
+        // Find user by connectionId (need to search through users to find matching id)
+        let userHasReplied = false;
+        if (gameState.users && status.connectionId) {
+          const user = Object.values(gameState.users).find(u => u.id === status.connectionId);
+          userHasReplied = user ? user.hasReplied : false;
+        }
         
         btn.disabled = !userHasReplied;
         if (!userHasReplied) {
@@ -131,6 +134,14 @@
           
           // Send vote
           state.client.sendNextGameVote(voteOption, appId ? String(appId) : null);
+          
+          // Optimistically update the UI immediately (will be confirmed by server update)
+          // This ensures the user sees their vote right away
+          console.log('[Co-op Next Game] Vote sent, optimistically updating UI...');
+          setTimeout(() => {
+            // Force a button update after a short delay to ensure server response is processed
+            updateNextGameButtons();
+          }, 100);
         } else {
           console.warn('[Co-op Next Game] Not connected, cannot vote');
         }
@@ -182,7 +193,15 @@
     });
     
     // Update when vote counts change
-    window.addEventListener('coop-next-game-vote-update', () => {
+    window.addEventListener('coop-next-game-vote-update', (event) => {
+      console.log('[Co-op Next Game] Vote update received:', event.detail);
+      // Ensure gameState is updated from the event
+      if (event.detail && event.detail.gameState && ns.coop && ns.coop.getState) {
+        const state = ns.coop.getState();
+        if (state.gameState) {
+          state.gameState.nextGameVotes = event.detail.gameState.nextGameVotes || event.detail.nextGameVotes || state.gameState.nextGameVotes;
+        }
+      }
       updateNextGameButtons();
     });
 
