@@ -17,6 +17,7 @@
         "src/nextGame.js",
         "src/websocketClient.js",
         "src/coopManager.js",
+        "src/coopUI.js",
         "src/main.js"
       ],
       "css": ["content.css"],

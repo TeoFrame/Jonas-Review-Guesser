@@ -93,3 +93,40 @@
 .ext-next-game + .ext-next-game {
   margin-left: 8px;
 }
+
+/* Co-op UI styles */
+.ext-coop-container {
+  margin-top: 12px;
+}
+
+.ext-coop-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ext-coop-btn:disabled:hover {
+  transform: none !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}

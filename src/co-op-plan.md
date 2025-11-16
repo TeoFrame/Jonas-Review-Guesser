@@ -28,12 +28,12 @@ Native WebSocket server using Node.js and the `ws` library. Simple, lightweight,
 - [ ] Deploy server (Railway/Render/etc.)
 
 ## Phase 2: Basic Connection Functionality
-- [ ] Add UI controls (Share, Join, Reset, Disconnect buttons)
-- [ ] Implement room creation for host
-- [ ] Generate shareable room codes
-- [ ] Implement join room functionality for clients
-- [ ] Add connection state management
-- [ ] Handle connection errors and reconnection
+- [x] Add UI controls (Share, Join, Reset, Disconnect buttons)
+- [x] Implement room creation for host
+- [x] Generate shareable room codes
+- [x] Implement join room functionality for clients
+- [x] Add connection state management
+- [x] Handle connection errors and reconnection
 
 ## Phase 3: Host/Client Role Management
 - [ ] Detect and assign host role (first user in room)

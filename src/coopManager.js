@@ -50,6 +50,7 @@
     coopState.client.on('open', () => {
       console.log('[Co-op] Connection opened');
       coopState.isConnected = true;
+      emitStatusChange();
     });
 
     // Connected to room
@@ -65,6 +66,7 @@
       coopState.isHost = data.isHost;
       coopState.gameState = data.gameState;
       coopState.isConnected = true;
+      emitStatusChange();
     });
 
     // User joined
@@ -83,6 +85,7 @@
     coopState.client.on('close', () => {
       console.log('[Co-op] Connection closed');
       coopState.isConnected = false;
+      emitStatusChange();
     });
 
     // Reconnection failed
@@ -158,6 +161,18 @@
       coopState.isHost = false;
       coopState.gameState = null;
       console.log('[Co-op] Disconnected');
+      emitStatusChange();
+    }
+  }
+
+  /**
+   * Emit status change event for UI updates
+   */
+  function emitStatusChange() {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('coop-status-change', {
+        detail: getStatus()
+      }));
     }
   }
 
