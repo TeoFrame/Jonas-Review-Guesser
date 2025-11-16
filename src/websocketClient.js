@@ -10,11 +10,13 @@ class WebSocketClient {
     this.roomId = null;
     this.userId = null; // Store userId for reconnection
     this.isConnected = false;
+    this.isNavigating = false; // Flag to indicate page is navigating
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
     this.listeners = new Map();
     this.serverUrl = null; // Will be set via connect()
+    this.reconnectNeededEmitted = false; // Prevent duplicate reconnect-needed emissions
   }
 
   /**
@@ -50,7 +52,9 @@ class WebSocketClient {
         this.ws.onopen = () => {
           console.log('WebSocket connected');
           this.isConnected = true;
+          this.isNavigating = false; // Reset navigation flag on successful connection
           this.reconnectAttempts = 0;
+          this.reconnectNeededEmitted = false; // Reset reconnect-needed flag
           this.emit('open');
           resolve();
         };
@@ -71,9 +75,22 @@ class WebSocketClient {
         };
 
         this.ws.onclose = () => {
-          console.log('WebSocket closed');
+          console.log('WebSocket closed', { isNavigating: this.isNavigating, reconnectNeededEmitted: this.reconnectNeededEmitted });
           this.isConnected = false;
           this.emit('close');
+          
+          // Don't try to reconnect if we're navigating (new page will handle reconnection)
+          if (this.isNavigating) {
+            console.log('[WebSocket] Page is navigating, skipping reconnection attempt');
+            return;
+          }
+          
+          // Only emit reconnect-needed once per connection close
+          // Prevent duplicate emissions that cause reconnection loops
+          if (this.reconnectNeededEmitted) {
+            console.log('[WebSocket] reconnect-needed already emitted for this connection, skipping');
+            return;
+          }
           
           // Only emit reconnect-needed if this wasn't an intentional disconnect
           // Check if reconnectAttempts is less than max (meaning we didn't intentionally stop reconnecting)
@@ -81,6 +98,7 @@ class WebSocketClient {
             // Attempt to reconnect if not intentionally closed
             // Note: We let coopManager handle reconnection with userId, so we don't auto-reconnect here
             // This prevents reconnection without userId
+            this.reconnectNeededEmitted = true;
             this.emit('reconnect-needed', {
               serverUrl: this.serverUrl,
               roomId: this.roomId,

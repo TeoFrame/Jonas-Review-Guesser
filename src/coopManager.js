@@ -147,6 +147,11 @@
       coopState.isReconnecting = false; // Reset reconnection flag on successful connection
       coopState.reconnectAttempts = 0; // Reset reconnection attempts on successful connection
       
+      // Reset navigation flag on successful connection
+      if (coopState.client) {
+        coopState.client.isNavigating = false;
+      }
+      
       // Store userId from gameState if available (find user with matching connectionId)
       if (data.gameState && data.gameState.users) {
         const user = Object.values(data.gameState.users).find(u => u.id === data.connectionId);
@@ -264,6 +269,12 @@
 
     // Handle reconnect-needed event from WebSocket client
     coopState.client.on('reconnect-needed', async (data) => {
+      // Don't reconnect if client is navigating (new page will handle it)
+      if (coopState.client && coopState.client.isNavigating) {
+        console.log('[Co-op] Client is navigating, skipping reconnection');
+        return;
+      }
+      
       // Prevent infinite reconnection loops
       if (coopState.isReconnecting) {
         console.log('[Co-op] Already reconnecting, ignoring reconnect-needed event');
@@ -286,6 +297,13 @@
         console.log(`[Co-op] Waiting ${delay}ms before reconnection attempt ${coopState.reconnectAttempts}...`);
         
         setTimeout(async () => {
+          // Check again if navigating before attempting reconnection
+          if (coopState.client && coopState.client.isNavigating) {
+            console.log('[Co-op] Navigation detected during reconnection delay, cancelling');
+            coopState.isReconnecting = false;
+            return;
+          }
+          
           try {
             // Ensure we have userId before reconnecting
             const userId = data.userId || await getOrCreateUserId();
@@ -564,22 +582,36 @@
    * Attempt to reconnect using saved connection info
    */
   async function attemptReconnection() {
+    // Prevent concurrent reconnection attempts
+    if (coopState.isReconnecting) {
+      console.log('[Co-op] Already reconnecting via reconnect-needed handler, skipping attemptReconnection');
+      return false;
+    }
+    
     try {
       const saved = await getSavedConnectionInfo();
       if (saved && !coopState.isConnected) {
         console.log('[Co-op] Found saved connection info, attempting to reconnect...');
         console.log('[Co-op] Room:', saved.roomId, 'Server:', saved.serverUrl);
         
+        // Mark as reconnecting to prevent conflicts
+        coopState.isReconnecting = true;
+        
         try {
           // Reconnect quickly to minimize the gap
           await connectToRoom(saved.roomId, saved.serverUrl);
           console.log('[Co-op] ✅ Successfully reconnected!');
+          
+          // Reset reconnection flag
+          coopState.isReconnecting = false;
+          coopState.reconnectAttempts = 0;
           
           // Note: Server will assign new connectionId, but we keep the same room
           // The server should recognize us as the same user if we reconnect fast enough
           return true;
         } catch (error) {
           console.warn('[Co-op] Reconnection failed:', error);
+          coopState.isReconnecting = false;
           // Don't clear immediately - might be temporary network issue
           return false;
         }
@@ -590,6 +622,7 @@
       }
     } catch (error) {
       console.error('[Co-op] Error during reconnection attempt:', error);
+      coopState.isReconnecting = false;
     }
     return false;
   }
@@ -630,12 +663,18 @@
       
       // Attempt to reconnect if we have saved connection info
       // Reconnect as quickly as possible to minimize disconnection time
+      // But wait a bit to avoid conflicts with reconnect-needed handler
       setTimeout(async () => {
-        const reconnected = await attemptReconnection();
-        if (reconnected) {
-          console.log('[Co-op] Reconnection completed, status:', getStatus());
+        // Only attempt reconnection if not already reconnecting via reconnect-needed handler
+        if (!coopState.isReconnecting) {
+          const reconnected = await attemptReconnection();
+          if (reconnected) {
+            console.log('[Co-op] Reconnection completed, status:', getStatus());
+          }
+        } else {
+          console.log('[Co-op] Reconnection already in progress via reconnect-needed handler, skipping attemptReconnection');
         }
-      }, 50); // Reduced delay for faster reconnection
+      }, 100); // Small delay to let reconnect-needed handler take precedence if needed
     } else {
       // Wait for websocketClient to load
       window.addEventListener('load', async () => {
@@ -648,11 +687,16 @@
           
           // Attempt to reconnect if we have saved connection info
           setTimeout(async () => {
-            const reconnected = await attemptReconnection();
-            if (reconnected) {
-              console.log('[Co-op] Reconnection completed, status:', getStatus());
+            // Only attempt reconnection if not already reconnecting via reconnect-needed handler
+            if (!coopState.isReconnecting) {
+              const reconnected = await attemptReconnection();
+              if (reconnected) {
+                console.log('[Co-op] Reconnection completed, status:', getStatus());
+              }
+            } else {
+              console.log('[Co-op] Reconnection already in progress via reconnect-needed handler, skipping attemptReconnection');
             }
-          }, 50); // Reduced delay for faster reconnection
+          }, 100); // Small delay to let reconnect-needed handler take precedence if needed
         }
       });
     }

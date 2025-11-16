@@ -167,10 +167,18 @@
               ns.coop.saveConnectionInfo(status.roomId, status.serverUrl);
             }
             
-            // Navigate after a brief delay to ensure message is processed
+            // Mark connection as navigating to prevent reconnection attempts during navigation
+            if (state.client && state.client.ws) {
+              // Don't close the connection - let it close naturally during navigation
+              // But mark that we're navigating so reconnection logic knows
+              state.client.isNavigating = true;
+            }
+            
+            // Navigate after a brief delay to ensure message is processed and connection info is saved
             setTimeout(() => {
-              window.location.assign(`https://store.steampowered.com/app/${data.gameId}/`);
-            }, 100);
+              // Use location.href instead of location.assign for more reliable navigation
+              window.location.href = `https://store.steampowered.com/app/${data.gameId}/`;
+            }, 200);
           }
         });
       }
