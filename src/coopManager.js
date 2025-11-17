@@ -185,35 +185,35 @@
         getOrCreateUserId().catch(err => console.error('[Co-op] Error generating userId:', err));
       }
       
-      // Prompt for nickname if not set
+      // Send nickname to server if we have one
+      // If nickname was provided via connect() call, it's already set
+      // Otherwise, prompt for it (only on first connection, not reconnection)
       if (!coopState.nickname) {
-        const nickname = prompt('Enter your nickname:') || '';
-        const trimmedNickname = nickname.trim();
-        if (trimmedNickname) {
-          coopState.nickname = trimmedNickname;
-          // Save nickname to sessionStorage
-          try {
-            sessionStorage.setItem('coopNickname', trimmedNickname);
-          } catch (e) {
-            // Ignore storage errors
-          }
-          
-          // Send nickname to server
-          if (coopState.client && coopState.isConnected) {
-            coopState.client.sendUserReady(true, trimmedNickname);
-          }
+        // Only prompt if we don't have a saved nickname
+        const savedNickname = sessionStorage.getItem('coopNickname');
+        if (savedNickname) {
+          coopState.nickname = savedNickname;
         } else {
-          // Use default name if user cancels
-          coopState.nickname = `User ${coopState.userId ? coopState.userId.slice(-6) : 'Unknown'}`;
-          if (coopState.client && coopState.isConnected) {
-            coopState.client.sendUserReady(true, coopState.nickname);
+          const nickname = prompt('Enter your nickname:') || '';
+          const trimmedNickname = nickname.trim();
+          if (trimmedNickname) {
+            coopState.nickname = trimmedNickname;
+            // Save nickname to sessionStorage
+            try {
+              sessionStorage.setItem('coopNickname', trimmedNickname);
+            } catch (e) {
+              // Ignore storage errors
+            }
+          } else {
+            // Use default name if user cancels
+            coopState.nickname = `User ${coopState.userId ? coopState.userId.slice(-6) : 'Unknown'}`;
           }
         }
-      } else {
-        // Send existing nickname to server (reconnection)
-        if (coopState.client && coopState.isConnected) {
-          coopState.client.sendUserReady(true, coopState.nickname);
-        }
+      }
+      
+      // Send nickname to server
+      if (coopState.client && coopState.isConnected && coopState.nickname) {
+        coopState.client.sendUserReady(true, coopState.nickname);
       }
       
       // Save connection info immediately after successful connection
@@ -533,9 +533,10 @@
    * Connect to a room
    * @param {string} roomId - Room ID to join
    * @param {string} serverUrl - Optional server URL
+   * @param {string} userName - User name/nickname (optional)
    * @returns {Promise<void>}
    */
-  async function connectToRoom(roomId, serverUrl = null) {
+  async function connectToRoom(roomId, serverUrl = null, userName = null) {
     if (!coopState.client) {
       if (!initWebSocketClient(serverUrl || DEFAULT_SERVER_URL)) {
         throw new Error('Failed to initialize WebSocket client');
@@ -577,8 +578,24 @@
         throw new Error(`Invalid userId before connect: ${userId} (type: ${typeof userId})`);
       }
       
+      // Set nickname if provided
+      if (userName && userName.trim()) {
+        coopState.nickname = userName.trim();
+        // Save nickname to sessionStorage
+        try {
+          sessionStorage.setItem('coopNickname', coopState.nickname);
+        } catch (e) {
+          // Ignore storage errors
+        }
+      }
+      
       await coopState.client.connect(url, roomId, userId);
       console.log('[Co-op] Successfully connected to room');
+      
+      // Send nickname to server if we have one (don't wait for prompt)
+      if (coopState.nickname && coopState.client && coopState.isConnected) {
+        coopState.client.sendUserReady(true, coopState.nickname);
+      }
       
       // Note: Connection info will be saved in the 'connected' event handler
       // where we have full connection details (connectionId, role, etc.)
@@ -710,9 +727,19 @@
   }
 
   // Expose API on namespace
+  /**
+   * Connect to a room (public API wrapper)
+   * @param {string} roomId - Room ID to connect to
+   * @param {string} serverUrl - WebSocket server URL
+   * @param {string} userName - User name/nickname (optional)
+   */
+  async function connect(roomId, serverUrl = null, userName = null) {
+    return connectToRoom(roomId, serverUrl, userName);
+  }
+
   ns.coop = {
     init: initWebSocketClient,
-    connect: connectToRoom,
+    connect: connect,
     disconnect: disconnect,
     getStatus: getStatus,
     testConnection: testConnection,

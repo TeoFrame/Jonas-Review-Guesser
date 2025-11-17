@@ -64,38 +64,80 @@
       border: 1px solid rgba(255, 255, 255, 0.1);
     `;
 
-    // Status display
+    // Status display (always visible)
     const statusDiv = document.createElement('div');
     statusDiv.className = 'ext-coop-status';
     statusDiv.style.cssText = `
       margin-bottom: 8px;
       font-size: 12px;
       color: rgba(255, 255, 255, 0.7);
+      display: block;
     `;
     statusDiv.textContent = 'Not connected';
     uiState.statusElement = statusDiv;
 
-    // Buttons container
-    const buttonsDiv = document.createElement('div');
-    buttonsDiv.className = 'ext-coop-buttons';
-    buttonsDiv.style.cssText = `
+    // Connection form container
+    const formDiv = document.createElement('div');
+    formDiv.className = 'ext-coop-form';
+    formDiv.style.cssText = `
       display: flex;
+      flex-direction: column;
       gap: 8px;
-      flex-wrap: wrap;
     `;
-    uiState.buttonsContainer = buttonsDiv;
+    uiState.formContainer = formDiv;
 
-    // Leaderboard container
+    // Room name input
+    const roomInput = document.createElement('input');
+    roomInput.type = 'text';
+    roomInput.placeholder = 'Room name';
+    roomInput.className = 'ext-coop-input';
+    roomInput.style.cssText = `
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      width: 100%;
+      box-sizing: border-box;
+    `;
+    roomInput.value = generateRoomCode(); // Default to random room code
+    uiState.roomInput = roomInput;
+
+    // User name input
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Your name';
+    nameInput.className = 'ext-coop-input';
+    nameInput.style.cssText = roomInput.style.cssText;
+    uiState.nameInput = nameInput;
+
+    // Connect button
+    const connectBtn = createButton('Connect', 'ext-coop-connect', () => handleConnect(roomInput, nameInput));
+    uiState.connectBtn = connectBtn;
+
+    // Disconnect button (hidden initially)
+    const disconnectBtn = createButton('Disconnect', 'ext-coop-disconnect', handleDisconnect);
+    disconnectBtn.style.display = 'none';
+    uiState.disconnectBtn = disconnectBtn;
+
+    formDiv.appendChild(roomInput);
+    formDiv.appendChild(nameInput);
+    formDiv.appendChild(connectBtn);
+    formDiv.appendChild(disconnectBtn);
+    uiState.buttonsContainer = formDiv; // Keep for compatibility
+
+    // Leaderboard container (always visible, content shown/hidden based on data)
     const leaderboardDiv = document.createElement('div');
     leaderboardDiv.className = 'ext-coop-leaderboard';
     leaderboardDiv.style.cssText = `
       margin-top: 12px;
-      display: none;
+      display: block;
     `;
     uiState.leaderboardElement = leaderboardDiv;
 
     container.appendChild(statusDiv);
-    container.appendChild(buttonsDiv);
+    container.appendChild(formDiv);
     container.appendChild(leaderboardDiv);
 
     return container;
@@ -171,32 +213,37 @@
 
 
   /**
-   * Handle Join button click (join existing room)
+   * Handle Connect button click
    */
-  async function handleJoin() {
+  async function handleConnect(roomInput, nameInput) {
     if (!ns.coop) {
       console.error('[Co-op UI] Co-op manager not available');
       showMessage('Error: Co-op manager not loaded', 'error');
       return;
     }
 
-    // Prompt for room code
-    const roomCode = prompt('Enter room code to join:');
-    if (!roomCode) return;
+    const roomCode = roomInput.value.trim().toUpperCase();
+    const userName = nameInput.value.trim();
 
-    const trimmedCode = roomCode.trim().toUpperCase();
-    if (!trimmedCode) {
-      showMessage('Invalid room code', 'error');
+    if (!roomCode) {
+      showMessage('Please enter a room name', 'error');
+      roomInput.focus();
+      return;
+    }
+
+    if (!userName) {
+      showMessage('Please enter your name', 'error');
+      nameInput.focus();
       return;
     }
 
     try {
       const serverUrl = await getServerUrl();
-      await ns.coop.connect(trimmedCode, serverUrl);
+      await ns.coop.connect(roomCode, serverUrl, userName);
       updateStatus(ns.coop.getStatus());
     } catch (error) {
-      console.error('[Co-op UI] Failed to join room:', error);
-      showMessage(`Failed to join: ${error.message}`, 'error');
+      console.error('[Co-op UI] Failed to connect:', error);
+      showMessage(`Failed to connect: ${error.message}`, 'error');
     }
   }
 
@@ -274,23 +321,11 @@
     const uiContainer = createUIContainer();
     uiState.container = uiContainer;
 
-    // Create buttons
-    const joinBtn = createButton('Join', 'ext-coop-join', handleJoin);
-    const disconnectBtn = createButton('Disconnect', 'ext-coop-disconnect', handleDisconnect);
-
-    // Initially show only Join button (not connected)
-    joinBtn.style.display = 'inline-block';
-    disconnectBtn.style.display = 'none';
-
-    // Add buttons to container
-    uiState.buttonsContainer.appendChild(joinBtn);
-    uiState.buttonsContainer.appendChild(disconnectBtn);
-
     // Insert UI container after Next Game buttons
     container.appendChild(uiContainer);
 
     // Set up connection status listener
-    setupStatusListener(joinBtn, disconnectBtn);
+    setupStatusListener();
 
     uiState.isInstalled = true;
     console.log('[Co-op UI] UI installed');
@@ -462,47 +497,62 @@
   /**
    * Set up listener for connection status changes
    */
-  function setupStatusListener(joinBtn, disconnectBtn) {
+  function setupStatusListener() {
     if (!ns.coop) return;
 
-    const updateButtons = () => {
+    const updateUI = () => {
       const status = ns.coop.getStatus();
       updateStatus(status);
       updateLeaderboard();
 
       const isConnected = status.isConnected;
       
-      // Show/hide buttons based on connection status
+      // Show/hide form elements based on connection status
       if (isConnected) {
-        // Connected: show Disconnect
-        joinBtn.style.display = 'none';
-        disconnectBtn.style.display = 'inline-block';
+        // Connected: hide form inputs, show disconnect button
+        // Status and leaderboard remain visible
+        if (uiState.roomInput) uiState.roomInput.style.display = 'none';
+        if (uiState.nameInput) uiState.nameInput.style.display = 'none';
+        if (uiState.connectBtn) uiState.connectBtn.style.display = 'none';
+        if (uiState.disconnectBtn) uiState.disconnectBtn.style.display = 'inline-block';
+        
+        // Ensure status and leaderboard are visible
+        if (uiState.statusElement) uiState.statusElement.style.display = 'block';
+        if (uiState.leaderboardElement) uiState.leaderboardElement.style.display = 'block';
       } else {
-        // Not connected: show Join only
-        joinBtn.style.display = 'inline-block';
-        disconnectBtn.style.display = 'none';
+        // Not connected: show form inputs and connect button, hide disconnect
+        if (uiState.roomInput) uiState.roomInput.style.display = 'block';
+        if (uiState.nameInput) uiState.nameInput.style.display = 'block';
+        if (uiState.connectBtn) uiState.connectBtn.style.display = 'inline-block';
+        if (uiState.disconnectBtn) uiState.disconnectBtn.style.display = 'none';
+        
+        // Status always visible, leaderboard visibility handled by updateLeaderboard
+        if (uiState.statusElement) uiState.statusElement.style.display = 'block';
       }
+      
+      // Hide/show Next buttons and option buttons based on connection status
+      updateButtonVisibility(isConnected);
     };
 
     // Update immediately
-    updateButtons();
+    updateUI();
 
     // Listen for status change events
     window.addEventListener('coop-status-change', (event) => {
-      updateButtons();
+      updateUI();
     });
     
     // Also listen for game state updates to update online count and show leaderboard (but only update content when completed)
     window.addEventListener('coop-reply-counts-update', (event) => {
-      updateButtons();
+      updateUI();
       updateLeaderboard(); // Show leaderboard (will only update content if room is completed)
     });
     window.addEventListener('coop-next-game-vote-update', (event) => {
-      updateButtons();
+      updateUI();
       updateLeaderboard();
     });
     window.addEventListener('coop-next-game-selected', (event) => {
-      updateButtons();
+      updateUI();
       updateLeaderboard();
     });
 
@@ -531,9 +581,32 @@
 
     // Fallback: also poll periodically (in case events don't fire)
     setInterval(() => {
-      updateButtons();
+      updateUI();
       updateLeaderboard();
     }, 2000);
+  }
+
+  /**
+   * Update visibility of Next buttons and option buttons based on connection status
+   */
+  function updateButtonVisibility(isConnected) {
+    // Hide/show Next Game buttons
+    const nextGameButtons = document.querySelectorAll('.ext-next-game');
+    nextGameButtons.forEach(btn => {
+      btn.style.display = isConnected ? '' : 'none';
+    });
+    
+    // Hide/show guess option buttons
+    const guessButtons = document.querySelectorAll('.ext-guess-btn');
+    guessButtons.forEach(btn => {
+      if (!isConnected) {
+        btn.style.pointerEvents = 'none';
+        btn.style.opacity = '0.5';
+      } else {
+        btn.style.pointerEvents = '';
+        btn.style.opacity = '';
+      }
+    });
   }
 
   // Expose API

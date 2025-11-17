@@ -15,11 +15,17 @@
     const gameState = status && ns.coop.getState() ? ns.coop.getState().gameState : null;
     
     nextGameButtons.forEach(btn => {
-      // Always show buttons
+      // Hide buttons if not connected
+      if (!status || !status.isConnected) {
+        btn.style.display = 'none';
+        return;
+      }
+      
+      // Show buttons when connected
       btn.style.display = '';
       
       // Update vote counts and enable/disable state
-      if (status && status.isConnected && gameState) {
+      if (gameState) {
         // Determine if this is Raw or Smart button
         // Check original text or current text (before vote count was added)
         const currentText = btn.textContent;

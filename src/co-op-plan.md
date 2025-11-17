@@ -24,7 +24,7 @@ Native WebSocket server using Node.js and the `ws` library. Simple, lightweight,
 - [x] Create WebSocket client module
 - [x] Create co-op manager for connection handling
 - [x] Add client-side connection testing
-- [ ] Deploy server (Railway/Render/etc.)
+- [x] Deploy server (Railway/Render/etc.)
 
 ## Phase 2: Basic Connection Functionality
 - [x] Add UI controls (Join, Reset, Disconnect buttons)
@@ -43,25 +43,25 @@ Native WebSocket server using Node.js and the `ws` library. Simple, lightweight,
 - [x] Automatic host migration when host disconnects
 
 ## Phase 4: User Reply Counter
-- [ ] Track user ready/reply states
-- [ ] Display "X/Y users replied" counter
-- [ ] Update counter in real-time
-- [ ] Reset reply counter on new game
-- [ ] Show individual user reply status
+- [x] Track user ready/reply states
+- [x] Display "X/Y users replied" counter
+- [x] Update counter in real-time
+- [x] Reset reply counter on new game
+- [x] Show individual user reply status
 
 ## Phase 5: Leaderboard Implementation
-- [ ] Create leaderboard data structure
-- [ ] Track correct guesses per user
-- [ ] Display real-time leaderboard UI
-- [ ] Sort users by score
-- [ ] Update leaderboard on each guess
-- [ ] Persist leaderboard during session
-- [ ] Reset leaderboard functionality
+- [x] Create leaderboard data structure
+- [x] Track correct guesses per user
+- [x] Display real-time leaderboard UI
+- [x] Sort users by score
+- [x] Update leaderboard on each guess
+- [x] Persist leaderboard during session
+- [x] Reset leaderboard functionality
 
 ## Phase 6: Testing and Polish
-- [ ] Test host/client functionality
-- [ ] Test with multiple simultaneous users
-- [ ] Handle edge cases (host disconnect, network issues)
-- [ ] Add user feedback messages
-- [ ] Update README with co-op instructions
-- [ ] Final testing and bug fixes
+- [x] Test host/client functionality
+- [x] Test with multiple simultaneous users
+- [x] Handle edge cases (host disconnect, network issues)
+- [x] Add user feedback messages
+- [x] Update README with co-op instructions
+- [x] Final testing and bug fixes

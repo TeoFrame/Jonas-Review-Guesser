@@ -360,9 +360,13 @@
               }
             }
           }
-          btn.disabled = true;
-          btn.setAttribute("aria-disabled", "true");
-          btn.style.pointerEvents = "none";
+          
+          // Only disable buttons if connected to co-op
+          if (ns.coop && ns.coop.getStatus && ns.coop.getStatus().isConnected) {
+            btn.disabled = true;
+            btn.setAttribute("aria-disabled", "true");
+            btn.style.pointerEvents = "none";
+          }
         });
         
         // In co-op mode, results will be shown when all users reply (handled by setupReplyCountUpdates)
