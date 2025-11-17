@@ -347,6 +347,18 @@
           const val = parseInt(btn.dataset.value, 10);
           if (val === picked) {
             btn.classList.add("user-selected");
+            // Set border color to user's color
+            if (ns.coop && ns.coop.getState) {
+              const state = ns.coop.getState();
+              const currentUserId = state.userId;
+              if (currentUserId && state.gameState && state.gameState.users && state.gameState.users[currentUserId]) {
+                const userColor = state.gameState.users[currentUserId].color;
+                if (userColor) {
+                  btn.style.borderColor = userColor;
+                  btn.style.boxShadow = `0 0 8px ${userColor}80`; // Add transparency to color
+                }
+              }
+            }
           }
           btn.disabled = true;
           btn.setAttribute("aria-disabled", "true");
@@ -507,6 +519,27 @@
         
         // Always update reply counts first (before showing results)
         updateReplyCounts(replyCounts);
+        
+        // Highlight user's selection with their color (before showing results)
+        if (ns.coop && ns.coop.getState) {
+          const state = ns.coop.getState();
+          const currentUserId = state.userId;
+          if (currentUserId && gameState.users && gameState.users[currentUserId]) {
+            const userPick = gameState.users[currentUserId].replyOption;
+            const userColor = gameState.users[currentUserId].color;
+            if (userPick !== null && userPick !== undefined && userColor) {
+              const buttons = wrap.querySelectorAll('.ext-guess-btn');
+              buttons.forEach(btn => {
+                const val = parseInt(btn.dataset.value, 10);
+                if (val === userPick) {
+                  btn.classList.add("user-selected");
+                  btn.style.borderColor = userColor;
+                  btn.style.boxShadow = `0 0 8px ${userColor}80`; // Add transparency to color
+                }
+              });
+            }
+          }
+        }
         
         // Show correct/wrong status ONLY if room is completed
         if (gameState.roomStatus === 'completed' && gameState.correctAnswer !== null) {
@@ -669,6 +702,9 @@
         const buttons = wrap.querySelectorAll('.ext-guess-btn');
         buttons.forEach(btn => {
           btn.classList.remove("correct", "wrong", "user-selected");
+          // Reset border styles
+          btn.style.borderColor = '';
+          btn.style.boxShadow = '';
         });
       });
     }
@@ -694,13 +730,16 @@
           // Reset UI state for new game
           const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
           wraps.forEach(wrap => {
-            wrap.dataset.resultsShown = '0'; // Reset results shown flag
-            const buttons = wrap.querySelectorAll('.ext-guess-btn');
-            buttons.forEach(btn => {
-              btn.classList.remove("correct", "wrong", "user-selected");
-            });
+          wrap.dataset.resultsShown = '0'; // Reset results shown flag
+          const buttons = wrap.querySelectorAll('.ext-guess-btn');
+          buttons.forEach(btn => {
+            btn.classList.remove("correct", "wrong", "user-selected");
+            // Reset border styles
+            btn.style.borderColor = '';
+            btn.style.boxShadow = '';
           });
-        }
+        });
+      }
         
         // Calculate reply counts from currentGameStats
         const replyCounts = {};
@@ -743,6 +782,26 @@
             console.warn('[Co-op] No count span found for button with value', value);
           }
         });
+        
+        // Highlight user's selection with their color (before showing results)
+        if (ns.coop && ns.coop.getState) {
+          const state = ns.coop.getState();
+          const currentUserId = state.userId;
+          if (currentUserId && gameState.users && gameState.users[currentUserId]) {
+            const userPick = gameState.users[currentUserId].replyOption;
+            const userColor = gameState.users[currentUserId].color;
+            if (userPick !== null && userPick !== undefined && userColor) {
+              allButtons.forEach(btn => {
+                const val = parseInt(btn.dataset.value, 10);
+                if (val === userPick) {
+                  btn.classList.add("user-selected");
+                  btn.style.borderColor = userColor;
+                  btn.style.boxShadow = `0 0 8px ${userColor}80`; // Add transparency to color
+                }
+              });
+            }
+          }
+        }
         
         // Show correct/wrong status ONLY if room is completed
         if (gameState.roomStatus === 'completed' && gameState.correctAnswer !== null) {

@@ -62,9 +62,10 @@
   color: #fff !important;
 }
 .ext-steam-guess button.user-selected {
-  background: rgba(255, 193, 7, 0.3) !important;
-  border-color: rgba(255, 193, 7, 0.6) !important;
-  box-shadow: 0 0 8px rgba(255, 193, 7, 0.4);
+  /* Border color will be set inline via JavaScript using user's color */
+  border-width: 3px !important;
+  border-style: solid !important;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
 }
 
 .ext-steam-guess .ext-subtle {
