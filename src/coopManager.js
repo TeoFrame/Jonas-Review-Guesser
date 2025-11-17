@@ -136,7 +136,7 @@
     });
 
     // Connected to room
-    coopState.client.on('connected', (data) => {
+    coopState.client.on('connected', async (data) => {
       console.log('[Co-op] Connected to room:', {
         connectionId: data.connectionId,
         gameState: data.gameState,
@@ -216,6 +216,90 @@
         coopState.client.sendUserReady(true, coopState.nickname);
       }
       
+      // Handle game navigation: if there's an active game, navigate to it
+      // If it's the first user (host) and no game is set, use current game as initial
+      if (data.gameState) {
+        const currentGameId = data.gameState.currentGameId;
+        const users = data.gameState.users || {};
+        const onlineUsers = Object.values(users).filter(u => u.isOnline);
+        // User is host if they're the only online user (first user in room)
+        const isHost = onlineUsers.length === 1;
+        const currentPageAppId = ns.getCurrentSteamAppId ? ns.getCurrentSteamAppId() : null;
+        
+        console.log('[Co-op] Connection game state check:', {
+          currentGameId,
+          currentPageAppId,
+          isHost,
+          onlineUsersCount: onlineUsers.length,
+          hasGameId: !!(currentGameId && currentGameId.toString().trim() !== '')
+        });
+        
+        // Check if there's an active game (handle both string and empty string cases)
+        const hasActiveGame = currentGameId && currentGameId.toString().trim() !== '';
+        
+        if (hasActiveGame) {
+          // There's an active game in the room
+          // Normalize both IDs to strings for comparison
+          const gameIdStr = currentGameId.toString().trim();
+          const pageIdStr = currentPageAppId ? currentPageAppId.toString().trim() : null;
+          
+          if (pageIdStr !== gameIdStr) {
+            // User is on a different page, navigate to the active game
+            console.log('[Co-op] Active game found in room:', gameIdStr, 'Current page:', pageIdStr, '- navigating...');
+            
+            // Save connection info before navigation
+            if (coopState.roomId) {
+              await saveConnectionInfo(coopState.roomId, coopState.serverUrl);
+            }
+            
+            // Mark as navigating to prevent reconnection attempts
+            if (coopState.client) {
+              coopState.client.isNavigating = true;
+            }
+            
+            // Navigate to the active game
+            const targetUrl = `https://store.steampowered.com/app/${gameIdStr}/`;
+            console.log('[Co-op] Navigating to:', targetUrl);
+            setTimeout(() => {
+              window.location.href = targetUrl;
+            }, 200);
+            return; // Don't continue with rest of connection logic since we're navigating
+          } else {
+            console.log('[Co-op] User is already on the correct game page:', gameIdStr);
+          }
+        } else if (isHost && currentPageAppId) {
+          // First user (host) and no game set yet - use current game as initial
+          console.log('[Co-op] First user (host) - setting current game as initial:', currentPageAppId);
+          
+          // Send a guess message with the current game ID to initialize it
+          // This will set the currentGameId on the server
+          if (coopState.client && coopState.isConnected) {
+            // Wait a bit for connection to be fully established
+            setTimeout(() => {
+              if (coopState.client && coopState.isConnected) {
+                // Send a dummy guess to initialize the game (the actual guess value doesn't matter here)
+                // The server will recognize this as a new game and set currentGameId
+                const gameIdStr = currentPageAppId.toString();
+                coopState.client.sendGuess(0, gameIdStr, null);
+                console.log('[Co-op] Sent initial game ID to server:', gameIdStr);
+              } else {
+                console.warn('[Co-op] Client not connected when trying to send initial game ID');
+              }
+            }, 500);
+          } else {
+            console.warn('[Co-op] Client not available when trying to set initial game');
+          }
+        } else {
+          console.log('[Co-op] No navigation needed:', {
+            hasActiveGame,
+            isHost,
+            hasCurrentPage: !!currentPageAppId
+          });
+        }
+      } else {
+        console.warn('[Co-op] No gameState in connection data');
+      }
+      
       // Save connection info immediately after successful connection
       // This is critical for reconnection after page navigation
       if (coopState.roomId) {
@@ -245,14 +329,49 @@
     });
 
     // Reply counts updated
-    coopState.client.on('reply-counts-update', (data) => {
+    coopState.client.on('reply-counts-update', async (data) => {
       console.log('[Co-op] Reply counts updated:', data);
       console.log('[Co-op] GameState:', data.gameState);
       console.log('[Co-op] CurrentGameStats:', data.gameState?.currentGameStats);
       console.log('[Co-op] RoomStatus:', data.gameState?.roomStatus);
+      
       if (data.gameState) {
+        const previousGameId = coopState.gameState?.currentGameId;
+        const newGameId = data.gameState.currentGameId;
+        
+        // Check if game has changed and navigate if needed
+        if (newGameId && newGameId.toString().trim() !== '') {
+          const currentPageAppId = ns.getCurrentSteamAppId ? ns.getCurrentSteamAppId() : null;
+          const gameIdStr = newGameId.toString().trim();
+          const pageIdStr = currentPageAppId ? currentPageAppId.toString().trim() : null;
+          
+          // If game changed and we're not already on that page, navigate
+          if (previousGameId !== newGameId && pageIdStr !== gameIdStr) {
+            console.log('[Co-op] Game changed detected:', previousGameId, '->', gameIdStr, '- navigating...');
+            
+            // Save connection info before navigation
+            if (coopState.roomId) {
+              await saveConnectionInfo(coopState.roomId, coopState.serverUrl);
+            }
+            
+            // Mark as navigating to prevent reconnection attempts
+            if (coopState.client) {
+              coopState.client.isNavigating = true;
+            }
+            
+            // Navigate to the new game
+            const targetUrl = `https://store.steampowered.com/app/${gameIdStr}/`;
+            console.log('[Co-op] Navigating to new game:', targetUrl);
+            setTimeout(() => {
+              window.location.href = targetUrl;
+            }, 200);
+            return; // Don't continue with rest of handler since we're navigating
+          }
+        }
+        
         coopState.gameState = data.gameState;
       }
+      
       // Dispatch event for UI updates
       window.dispatchEvent(new CustomEvent('coop-reply-counts-update', {
         detail: data
