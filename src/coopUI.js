@@ -15,6 +15,10 @@
     buttonsContainer: null,
     statusElement: null,
     leaderboardElement: null,
+    statsDropdown: null,
+    statsLabel: null,
+    statsContent: null,
+    nextButtonsContainer: null,
     isInstalled: false,
     serverUrl: DEFAULT_SERVER_URL,
     lastLeaderboardHTML: null, // Store last completed leaderboard HTML
@@ -62,27 +66,20 @@
       background: rgba(255, 255, 255, 0.05);
       border-radius: 8px;
       border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
     `;
 
-    // Status display (always visible)
-    const statusDiv = document.createElement('div');
-    statusDiv.className = 'ext-coop-status';
-    statusDiv.style.cssText = `
-      margin-bottom: 8px;
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.7);
-      display: block;
-    `;
-    statusDiv.textContent = 'Not connected';
-    uiState.statusElement = statusDiv;
-
-    // Connection form container
+    // Connection form container (shown when not connected)
     const formDiv = document.createElement('div');
     formDiv.className = 'ext-coop-form';
     formDiv.style.cssText = `
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     `;
     uiState.formContainer = formDiv;
 
@@ -98,7 +95,7 @@
       background: rgba(255, 255, 255, 0.08);
       color: #fff;
       font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      width: 100%;
+      width: 120px;
       box-sizing: border-box;
     `;
     roomInput.value = generateRoomCode(); // Default to random room code
@@ -110,35 +107,160 @@
     nameInput.placeholder = 'Your name';
     nameInput.className = 'ext-coop-input';
     nameInput.style.cssText = roomInput.style.cssText;
+    nameInput.style.width = '120px';
     uiState.nameInput = nameInput;
 
     // Connect button
     const connectBtn = createButton('Connect', 'ext-coop-connect', () => handleConnect(roomInput, nameInput));
     uiState.connectBtn = connectBtn;
 
-    // Disconnect button (hidden initially)
+    // Add Enter key submit handlers
+    const handleFormSubmit = (e) => {
+      e.preventDefault();
+      if (roomInput.value.trim() && nameInput.value.trim()) {
+        handleConnect(roomInput, nameInput);
+      }
+    };
+    
+    roomInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (roomInput.value.trim() && nameInput.value.trim()) {
+          handleConnect(roomInput, nameInput);
+        } else if (roomInput.value.trim()) {
+          nameInput.focus();
+        }
+      }
+    });
+    
+    nameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        handleFormSubmit(e);
+      }
+    });
+    
+    formDiv.appendChild(roomInput);
+    formDiv.appendChild(nameInput);
+    formDiv.appendChild(connectBtn);
+    uiState.buttonsContainer = formDiv; // Keep for compatibility
+
+    // Disconnect button (hidden initially, shown when connected)
     const disconnectBtn = createButton('Disconnect', 'ext-coop-disconnect', handleDisconnect);
     disconnectBtn.style.display = 'none';
     uiState.disconnectBtn = disconnectBtn;
 
-    formDiv.appendChild(roomInput);
-    formDiv.appendChild(nameInput);
-    formDiv.appendChild(connectBtn);
-    formDiv.appendChild(disconnectBtn);
-    uiState.buttonsContainer = formDiv; // Keep for compatibility
-
-    // Leaderboard container (always visible, content shown/hidden based on data)
-    const leaderboardDiv = document.createElement('div');
-    leaderboardDiv.className = 'ext-coop-leaderboard';
-    leaderboardDiv.style.cssText = `
-      margin-top: 12px;
-      display: block;
+    // Status display (shown when connected)
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'ext-coop-status';
+    statusDiv.style.cssText = `
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+      display: none;
+      white-space: nowrap;
     `;
-    uiState.leaderboardElement = leaderboardDiv;
+    statusDiv.textContent = '';
+    uiState.statusElement = statusDiv;
 
-    container.appendChild(statusDiv);
+    // Stats dropdown (shown when connected)
+    const statsDropdown = document.createElement('div');
+    statsDropdown.className = 'ext-coop-stats';
+    statsDropdown.style.cssText = `
+      position: relative;
+      display: none;
+    `;
+    
+    const statsLabel = document.createElement('button');
+    statsLabel.type = 'button';
+    statsLabel.className = 'ext-coop-stats-label';
+    statsLabel.style.cssText = `
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font: 600 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.06s ease;
+      white-space: nowrap;
+    `;
+    statsLabel.textContent = 'Stats';
+    
+    // Add hover effects
+    statsLabel.addEventListener('mouseenter', () => {
+      statsLabel.style.background = 'rgba(255, 255, 255, 0.15)';
+      statsLabel.style.transform = 'translateY(-1px)';
+    });
+    statsLabel.addEventListener('mouseleave', () => {
+      statsLabel.style.background = 'rgba(255, 255, 255, 0.08)';
+      statsLabel.style.transform = 'translateY(0)';
+    });
+    
+    uiState.statsLabel = statsLabel;
+    
+    const statsContent = document.createElement('div');
+    statsContent.className = 'ext-coop-stats-content';
+    statsContent.style.cssText = `
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      padding: 12px;
+      background: rgba(26, 26, 26, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      min-width: 250px;
+      max-width: 400px;
+      display: none;
+    `;
+    uiState.statsContent = statsContent;
+    uiState.leaderboardElement = statsContent; // Use stats content for leaderboard
+    
+    statsLabel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isExpanded = statsContent.style.display === 'block';
+      statsContent.style.display = isExpanded ? 'none' : 'block';
+      // Save state to sessionStorage
+      try {
+        sessionStorage.setItem('coopStatsExpanded', isExpanded ? 'false' : 'true');
+      } catch (e) {
+        // Ignore storage errors
+      }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!statsDropdown.contains(e.target)) {
+        statsContent.style.display = 'none';
+        try {
+          sessionStorage.setItem('coopStatsExpanded', 'false');
+        } catch (e) {
+          // Ignore storage errors
+        }
+      }
+    });
+    
+    statsDropdown.appendChild(statsLabel);
+    statsDropdown.appendChild(statsContent);
+    uiState.statsDropdown = statsDropdown;
+
+    // Container for Next buttons (will be populated when Next buttons are created)
+    const nextButtonsContainer = document.createElement('div');
+    nextButtonsContainer.className = 'ext-coop-next-buttons';
+    nextButtonsContainer.style.cssText = `
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    `;
+    uiState.nextButtonsContainer = nextButtonsContainer;
+
+    // Append elements in order: form | status | disconnect | stats | next buttons
     container.appendChild(formDiv);
-    container.appendChild(leaderboardDiv);
+    container.appendChild(statusDiv);
+    container.appendChild(disconnectBtn);
+    container.appendChild(statsDropdown);
+    container.appendChild(nextButtonsContainer);
 
     return container;
   }
@@ -206,8 +328,8 @@
       uiState.statusElement.textContent = `🟢 Connected - Room: ${roomId}${onlineText}`;
       uiState.statusElement.style.color = '#4caf50';
     } else {
-      uiState.statusElement.textContent = 'Not connected';
-      uiState.statusElement.style.color = 'rgba(255, 255, 255, 0.7)';
+      // Don't show "Not connected" - just leave it empty
+      uiState.statusElement.textContent = '';
     }
   }
 
@@ -321,8 +443,15 @@
     const uiContainer = createUIContainer();
     uiState.container = uiContainer;
 
-    // Insert UI container after Next Game buttons
-    container.appendChild(uiContainer);
+    // Find Next Game buttons to insert before them (so they appear in the same row)
+    const nextGameButtons = container.querySelectorAll('.ext-next-game');
+    if (nextGameButtons.length > 0) {
+      // Insert before first Next button
+      nextGameButtons[0].parentNode.insertBefore(uiContainer, nextGameButtons[0]);
+    } else {
+      // No Next buttons yet, just append
+      container.appendChild(uiContainer);
+    }
 
     // Set up connection status listener
     setupStatusListener();
@@ -333,15 +462,73 @@
   }
 
   /**
+   * Get current user's stats and placement
+   */
+  function getCurrentUserStats(state) {
+    if (!state.gameState || !state.gameState.users || !state.gameState.leaderboard || !state.userId) {
+      return null;
+    }
+    
+    const user = state.gameState.users[state.userId];
+    if (!user) return null;
+    
+    const entry = state.gameState.leaderboard.find(e => e.userId === state.userId);
+    if (!entry) return null;
+    
+    const allEntries = state.gameState.leaderboard
+      .map(e => {
+        const u = state.gameState.users[e.userId];
+        if (!u) return null;
+        const total = e.correctAnswers + e.failedAnswers;
+        const percentage = total > 0 ? Math.round((e.correctAnswers / total) * 100) : 0;
+        return { ...e, ...u, total, percentage };
+      })
+      .filter(item => item !== null)
+      .sort((a, b) => {
+        if (b.percentage !== a.percentage) {
+          return b.percentage - a.percentage;
+        }
+        return b.total - a.total;
+      });
+    
+    const placement = allEntries.findIndex(e => e.userId === state.userId) + 1;
+    const total = entry.correctAnswers + entry.failedAnswers;
+    const percentage = total > 0 ? Math.round((entry.correctAnswers / total) * 100) : 0;
+    
+    return {
+      placement,
+      totalPlayers: allEntries.length,
+      correctAnswers: entry.correctAnswers,
+      failedAnswers: entry.failedAnswers,
+      total,
+      percentage,
+      name: user.name || 'User',
+      color: user.color || '#66C0F4'
+    };
+  }
+
+  /**
    * Update leaderboard display
    */
   function updateLeaderboard() {
     if (!uiState.leaderboardElement || !ns.coop) return;
     
     const state = ns.coop.getState();
-    if (!state.gameState || !state.gameState.users || !state.gameState.leaderboard) {
+    if (!state || !state.gameState) {
       uiState.leaderboardElement.style.display = 'none';
+      if (uiState.statsLabel) {
+        uiState.statsLabel.textContent = 'Stats';
+      }
       return;
+    }
+    
+    // Ensure leaderboard array exists
+    if (!state.gameState.leaderboard) {
+      state.gameState.leaderboard = [];
+    }
+    
+    if (!state.gameState.users) {
+      state.gameState.users = {};
     }
 
     const allUsers = Object.values(state.gameState.users);
@@ -351,16 +538,76 @@
     // If room is not completed, show the last completed leaderboard state
     const shouldUpdateContent = state.gameState.roomStatus === 'completed';
     
-    // If no leaderboard data yet, hide it
+    // Map leaderboard entries to user info (do this early so we can use it for label)
+    const leaderboardWithUsers = state.gameState.leaderboard
+      .map(entry => {
+        const user = state.gameState.users[entry.userId];
+        if (!user) return null;
+        const total = entry.correctAnswers + entry.failedAnswers;
+        const percentage = total > 0 
+          ? Math.round((entry.correctAnswers / total) * 100) 
+          : 0;
+        return {
+          ...entry,
+          ...user,
+          total,
+          percentage,
+        };
+      })
+      .filter(item => item !== null)
+      .sort((a, b) => {
+        // Sort by percentage descending, then by total descending
+        if (b.percentage !== a.percentage) {
+          return b.percentage - a.percentage;
+        }
+        return b.total - a.total;
+      });
+    
+    // Update stats label with top-1 user
+    if (leaderboardWithUsers.length > 0 && uiState.statsLabel) {
+      const topUser = leaderboardWithUsers[0];
+      const userColor = topUser.color || '#66C0F4';
+      // Create HTML with colored indicator
+      uiState.statsLabel.innerHTML = `
+        <span style="
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: ${userColor};
+          margin-right: 6px;
+          vertical-align: middle;
+        "></span>
+        <span>${topUser.name || 'User'}: ${topUser.correctAnswers || 0} / ${topUser.failedAnswers || 0} (${topUser.percentage}%)</span>
+      `;
+    } else if (uiState.statsLabel) {
+      uiState.statsLabel.textContent = 'Stats';
+      uiState.statsLabel.innerHTML = 'Stats'; // Reset HTML as well
+    }
+    
+    // If no leaderboard data yet, show empty state
     if (state.gameState.leaderboard.length === 0) {
-      uiState.leaderboardElement.style.display = 'none';
+      uiState.leaderboardElement.innerHTML = '<div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); padding: 8px;">No stats yet</div>';
+      // Restore collapse state from sessionStorage
+      try {
+        const isExpanded = sessionStorage.getItem('coopStatsExpanded') === 'true';
+        uiState.leaderboardElement.style.display = isExpanded ? 'block' : 'none';
+      } catch (e) {
+        uiState.leaderboardElement.style.display = 'none';
+      }
       return;
     }
     
     // If room is not completed and we have a stored leaderboard, show it without updating
     if (!shouldUpdateContent && uiState.lastLeaderboardHTML) {
       uiState.leaderboardElement.innerHTML = uiState.lastLeaderboardHTML;
-      uiState.leaderboardElement.style.display = 'block';
+      // Restore collapse state from sessionStorage
+      try {
+        const isExpanded = sessionStorage.getItem('coopStatsExpanded') === 'true';
+        uiState.leaderboardElement.style.display = isExpanded ? 'block' : 'none';
+      } catch (e) {
+        uiState.leaderboardElement.style.display = 'none';
+      }
       return;
     }
     
@@ -414,7 +661,13 @@
       
       if (html) {
         uiState.leaderboardElement.innerHTML = html;
-        uiState.leaderboardElement.style.display = 'block';
+        // Restore collapse state from sessionStorage
+        try {
+          const isExpanded = sessionStorage.getItem('coopStatsExpanded') === 'true';
+          uiState.leaderboardElement.style.display = isExpanded ? 'block' : 'none';
+        } catch (e) {
+          uiState.leaderboardElement.style.display = 'none';
+        }
         // Store the HTML when room is completed
         if (shouldUpdateContent) {
           uiState.lastLeaderboardHTML = html;
@@ -425,30 +678,6 @@
       return;
     }
 
-    // Map leaderboard entries to user info
-    const leaderboardWithUsers = state.gameState.leaderboard
-      .map(entry => {
-        const user = state.gameState.users[entry.userId];
-        if (!user) return null;
-        const total = entry.correctAnswers + entry.failedAnswers;
-        const percentage = total > 0 
-          ? Math.round((entry.correctAnswers / total) * 100) 
-          : 0;
-        return {
-          ...entry,
-          ...user,
-          total,
-          percentage,
-        };
-      })
-      .filter(item => item !== null)
-      .sort((a, b) => {
-        // Sort by percentage descending, then by total descending
-        if (b.percentage !== a.percentage) {
-          return b.percentage - a.percentage;
-        }
-        return b.total - a.total;
-      });
 
     // Build leaderboard HTML
     let html = '<div style="font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-bottom: 6px; font-weight: 600;">Leaderboard</div>';
@@ -473,20 +702,22 @@
             margin-right: 8px;
             flex-shrink: 0;
           "></div>
-          <div style="flex: 1; min-width: 0;">
-            <div style="color: rgba(255, 255, 255, 0.9); font-weight: 600; margin-bottom: 2px;">
-              ${entry.name || 'User'}
-            </div>
-            <div style="color: rgba(255, 255, 255, 0.6); font-size: 11px;">
-              ✓ ${entry.correctAnswers || 0} | ✗ ${entry.failedAnswers || 0} | Total: ${entry.total} | ${entry.percentage}%
-            </div>
+          <div style="flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.9);">
+            ${entry.name || 'User'}: ${entry.correctAnswers || 0} / ${entry.failedAnswers || 0} (${entry.percentage}%)
           </div>
         </div>
       `;
     });
 
     uiState.leaderboardElement.innerHTML = html;
-    uiState.leaderboardElement.style.display = 'block';
+    
+    // Restore collapse state from sessionStorage
+    try {
+      const isExpanded = sessionStorage.getItem('coopStatsExpanded') === 'true';
+      uiState.leaderboardElement.style.display = isExpanded ? 'block' : 'none';
+    } catch (e) {
+      uiState.leaderboardElement.style.display = 'none';
+    }
     
     // Store the HTML when room is completed so we can show it later
     if (shouldUpdateContent) {
@@ -509,25 +740,21 @@
       
       // Show/hide form elements based on connection status
       if (isConnected) {
-        // Connected: hide form inputs, show disconnect button
-        // Status and leaderboard remain visible
-        if (uiState.roomInput) uiState.roomInput.style.display = 'none';
-        if (uiState.nameInput) uiState.nameInput.style.display = 'none';
-        if (uiState.connectBtn) uiState.connectBtn.style.display = 'none';
+        // Connected: hide form, show disconnect button, status, and stats
+        if (uiState.formContainer) uiState.formContainer.style.display = 'none';
         if (uiState.disconnectBtn) uiState.disconnectBtn.style.display = 'inline-block';
-        
-        // Ensure status and leaderboard are visible
         if (uiState.statusElement) uiState.statusElement.style.display = 'block';
-        if (uiState.leaderboardElement) uiState.leaderboardElement.style.display = 'block';
+        if (uiState.statsDropdown) uiState.statsDropdown.style.display = 'block';
+        // Move Next buttons into container
+        moveNextButtonsToContainer();
       } else {
-        // Not connected: show form inputs and connect button, hide disconnect
-        if (uiState.roomInput) uiState.roomInput.style.display = 'block';
-        if (uiState.nameInput) uiState.nameInput.style.display = 'block';
-        if (uiState.connectBtn) uiState.connectBtn.style.display = 'inline-block';
+        // Not connected: show form, hide disconnect button, status, and stats
+        if (uiState.formContainer) uiState.formContainer.style.display = 'flex';
         if (uiState.disconnectBtn) uiState.disconnectBtn.style.display = 'none';
-        
-        // Status always visible, leaderboard visibility handled by updateLeaderboard
-        if (uiState.statusElement) uiState.statusElement.style.display = 'block';
+        if (uiState.statusElement) uiState.statusElement.style.display = 'none';
+        if (uiState.statsDropdown) uiState.statsDropdown.style.display = 'none';
+        // Reset stats collapse state
+        if (uiState.statsContent) uiState.statsContent.style.display = 'none';
       }
       
       // Hide/show Next buttons and option buttons based on connection status
@@ -584,6 +811,22 @@
       updateUI();
       updateLeaderboard();
     }, 2000);
+  }
+
+  /**
+   * Move Next buttons into the main container
+   */
+  function moveNextButtonsToContainer() {
+    if (!uiState.nextButtonsContainer) return;
+    
+    const nextGameButtons = document.querySelectorAll('.ext-next-game');
+    nextGameButtons.forEach(btn => {
+      // Only move if not already in our container
+      if (btn.parentNode !== uiState.nextButtonsContainer) {
+        uiState.nextButtonsContainer.appendChild(btn);
+        btn.style.display = '';
+      }
+    });
   }
 
   /**

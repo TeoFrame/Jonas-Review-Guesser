@@ -57,7 +57,7 @@
           btn.textContent = baseText;
         }
         
-        // Enable buttons only if user has replied
+        // Enable buttons if room is completed OR if user has replied
         // Find user by connectionId (need to search through users to find matching id)
         let userHasReplied = false;
         if (gameState.users && status.connectionId) {
@@ -65,8 +65,11 @@
           userHasReplied = user ? user.hasReplied : false;
         }
         
-        btn.disabled = !userHasReplied;
-        if (!userHasReplied) {
+        const roomCompleted = gameState.roomStatus === 'completed';
+        const shouldEnable = roomCompleted || userHasReplied;
+        
+        btn.disabled = !shouldEnable;
+        if (!shouldEnable) {
           btn.title = 'Reply to the current game first';
         } else {
           btn.title = '';
