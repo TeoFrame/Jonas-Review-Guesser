@@ -19,6 +19,25 @@ Jonas Review Guesser is a Chrome extension that turns Steam into a review guessi
     - Surfaces more recognizable / higher-quality titles more often.
     - Still maintains some variety so you don’t only see top hits.
 
+## Co-op Multiplayer
+
+The extension includes a co-op multiplayer mode that allows multiple users to play together in the same room. Users can share a room code to connect and play simultaneously.
+
+### Important: Self-Signed Certificate Setup
+
+If you're using the co-op feature with a self-signed SSL certificate (for development/testing), you **must** allow the certificate in your browser first:
+
+1. **Before connecting from Steam pages**, visit the WebSocket server URL directly in your browser:
+   - Example: `https://31.43.142.49:443`
+2. **Accept the security warning**:
+   - Click "Advanced" or "Show Details"
+   - Click "Proceed to [server address]" or "Accept the Risk and Continue"
+3. **After accepting**, you can use the extension normally on Steam pages
+
+**Why is this needed?** Browsers block connections to servers with self-signed certificates by default. By visiting the server URL first and accepting the certificate, you're telling your browser to trust it for future connections.
+
+**Note:** For production servers with trusted certificates (e.g., Let's Encrypt), this step is not required.
+
 ## Limitations
 
 It is a very simple application with many limitations:
