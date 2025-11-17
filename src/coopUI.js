@@ -17,6 +17,7 @@
     leaderboardElement: null,
     isInstalled: false,
     serverUrl: DEFAULT_SERVER_URL,
+    lastLeaderboardHTML: null, // Store last completed leaderboard HTML
   };
 
   /**
@@ -311,14 +312,27 @@
     const allUsers = Object.values(state.gameState.users);
     const onlineUsers = allUsers.filter(u => u.isOnline);
     
-    // Only update leaderboard if room is completed (to prevent premature updates)
-    if (state.gameState.roomStatus !== 'completed') {
+    // Show leaderboard in any room status, but only update content when completed
+    // If room is not completed, show the last completed leaderboard state
+    const shouldUpdateContent = state.gameState.roomStatus === 'completed';
+    
+    // If no leaderboard data yet, hide it
+    if (state.gameState.leaderboard.length === 0) {
+      uiState.leaderboardElement.style.display = 'none';
+      return;
+    }
+    
+    // If room is not completed and we have a stored leaderboard, show it without updating
+    if (!shouldUpdateContent && uiState.lastLeaderboardHTML) {
+      uiState.leaderboardElement.innerHTML = uiState.lastLeaderboardHTML;
+      uiState.leaderboardElement.style.display = 'block';
       return;
     }
     
     // If only 1 user online, show just numbers
     if (onlineUsers.length <= 1) {
-      if (onlineUsers.length === 1 && state.gameState.leaderboard.length > 0) {
+      let html = '';
+      if (onlineUsers.length === 1) {
         const user = onlineUsers[0];
         const entry = state.gameState.leaderboard.find(e => e.userId === user.userId);
         if (entry) {
@@ -326,14 +340,49 @@
           const percentage = total > 0 
             ? Math.round((entry.correctAnswers / total) * 100) 
             : 0;
-          uiState.leaderboardElement.innerHTML = `
+          html = `
             <div style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">
               Correct: ${entry.correctAnswers || 0} | Failed: ${entry.failedAnswers || 0} | Total: ${total} | ${percentage}%
             </div>
           `;
-          uiState.leaderboardElement.style.display = 'block';
         } else {
-          uiState.leaderboardElement.style.display = 'none';
+          // User not in leaderboard yet, but show if there's any data
+          if (state.gameState.leaderboard.length > 0) {
+            // Show first entry as placeholder
+            const firstEntry = state.gameState.leaderboard[0];
+            const total = firstEntry.correctAnswers + firstEntry.failedAnswers;
+            const percentage = total > 0 
+              ? Math.round((firstEntry.correctAnswers / total) * 100) 
+              : 0;
+            html = `
+              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">
+                Correct: ${firstEntry.correctAnswers || 0} | Failed: ${firstEntry.failedAnswers || 0} | Total: ${total} | ${percentage}%
+              </div>
+            `;
+          }
+        }
+      } else {
+        // No users online, but show leaderboard if there's data
+        if (state.gameState.leaderboard.length > 0) {
+          const firstEntry = state.gameState.leaderboard[0];
+          const total = firstEntry.correctAnswers + firstEntry.failedAnswers;
+          const percentage = total > 0 
+            ? Math.round((firstEntry.correctAnswers / total) * 100) 
+            : 0;
+          html = `
+            <div style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">
+              Correct: ${firstEntry.correctAnswers || 0} | Failed: ${firstEntry.failedAnswers || 0} | Total: ${total} | ${percentage}%
+            </div>
+          `;
+        }
+      }
+      
+      if (html) {
+        uiState.leaderboardElement.innerHTML = html;
+        uiState.leaderboardElement.style.display = 'block';
+        // Store the HTML when room is completed
+        if (shouldUpdateContent) {
+          uiState.lastLeaderboardHTML = html;
         }
       } else {
         uiState.leaderboardElement.style.display = 'none';
@@ -403,6 +452,11 @@
 
     uiState.leaderboardElement.innerHTML = html;
     uiState.leaderboardElement.style.display = 'block';
+    
+    // Store the HTML when room is completed so we can show it later
+    if (shouldUpdateContent) {
+      uiState.lastLeaderboardHTML = html;
+    }
   }
 
   /**
@@ -438,10 +492,10 @@
       updateButtons();
     });
     
-    // Also listen for game state updates to update online count (but not leaderboard until all users reply)
+    // Also listen for game state updates to update online count and show leaderboard (but only update content when completed)
     window.addEventListener('coop-reply-counts-update', (event) => {
       updateButtons();
-      // Don't update leaderboard here - it will update on score-update after all users reply
+      updateLeaderboard(); // Show leaderboard (will only update content if room is completed)
     });
     window.addEventListener('coop-next-game-vote-update', (event) => {
       updateButtons();

@@ -224,7 +224,11 @@ wss.on('connection', (ws, req) => {
     console.log(`User reconnected: ${persistentUserId}`);
     user.id = connectionId;
     user.isOnline = true;
-    // Reset reply/vote status for new game round (if needed)
+    // Reset reply/vote status when reconnecting (they need to reply again for current game)
+    user.hasReplied = false;
+    user.replyOption = null;
+    // Remove from currentGameStats if they were in it (they disconnected, so their reply doesn't count)
+    state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== persistentUserId);
     // Keep score and other persistent data
   } else {
     // New user: create user object
@@ -471,36 +475,25 @@ function handleGuess(data, ws, state, clients) {
     return;
   }
   
-  // Store correct answer if provided and gameId changed
-  if (data.correctAnswer !== null && data.correctAnswer !== undefined) {
-    if (isNewGame) {
-      // New game - reset current game stats (room status should already be in_progress from vote)
-      console.log(`[Server] New game detected: ${state.currentGameId} -> ${data.gameId}`);
-      state.currentGameId = data.gameId;
-      state.currentGameStats = [];
-      state.roomStatus = 'in_progress'; // Ensure it's in_progress
-      state.correctAnswer = data.correctAnswer;
-      // Reset all users' reply status for new game
-      Object.values(state.users).forEach(u => {
-        u.hasReplied = false;
-        u.replyOption = null;
-      });
-    } else if (state.correctAnswer === null) {
-      // Same game but correct answer not set yet
-      state.correctAnswer = data.correctAnswer;
-    }
-  } else if (isNewGame) {
-    // New game detected even without correctAnswer - ensure room status is reset
-    console.log(`[Server] New game detected: ${state.currentGameId} -> ${data.gameId}, resetting room status`);
+  // If this is a new game, reset everything FIRST before processing the guess
+  if (isNewGame) {
+    console.log(`[Server] New game detected: ${state.currentGameId} -> ${data.gameId}, resetting game state`);
     state.currentGameId = data.gameId;
-    state.currentGameStats = [];
-    state.roomStatus = 'in_progress';
-    state.correctAnswer = null;
+    state.currentGameStats = []; // Clear all stats
+    state.roomStatus = 'in_progress'; // Ensure it's in_progress
+    state.correctAnswer = null; // Will be set below if provided
     // Reset all users' reply status for new game
     Object.values(state.users).forEach(u => {
       u.hasReplied = false;
       u.replyOption = null;
     });
+  }
+  
+  // Store correct answer if provided
+  if (data.correctAnswer !== null && data.correctAnswer !== undefined) {
+    if (state.correctAnswer === null || isNewGame) {
+      state.correctAnswer = data.correctAnswer;
+    }
   }
 
   const guessValue = data.guess;
@@ -535,14 +528,16 @@ function handleGuess(data, ws, state, clients) {
     state.currentGameStats.every(stat => onlineUserIds.has(stat.userId));
   
   // All users have replied if: all online users are in stats, all stats are for online users, and counts match
+  // IMPORTANT: Only rely on currentGameStats, not hasReplied flags (which may be stale)
   const allReplied = onlineUsers.length > 0 &&
-    usersWhoActuallyReplied.length === onlineUsers.length &&
-    allStatsAreOnline &&
-    state.currentGameStats.length === onlineUsers.length;
+    onlineUsers.length === state.currentGameStats.length && // Counts must match exactly
+    usersWhoActuallyReplied.length === onlineUsers.length && // All online users must be in stats
+    allStatsAreOnline; // All stats must be for online users
   
   // Log detailed information for debugging
   const hasRepliedUsers = onlineUsers.filter(u => u.hasReplied);
   const hasRepliedUserIds = hasRepliedUsers.map(u => u.userId);
+  const allOnlineUsersInStats = usersWhoActuallyReplied.length === onlineUsers.length;
   console.log(`[Server] Guess from ${userId}: onlineUsers=${onlineUsers.length}, hasReplied=${hasRepliedUsers.length}, currentGameStats=${state.currentGameStats.length}, allReplied=${allReplied}`);
   if (!allReplied) {
     console.log(`[Server] Details: onlineUserIds=${Array.from(onlineUserIds)}, statsUserIds=${Array.from(statsUserIds)}`);
@@ -727,7 +722,16 @@ function handleUserReady(data, ws, state, clients) {
   const user = state.users[userId];
   if (!user || !user.isOnline) return;
 
-  user.hasReplied = data.hasReplied !== undefined ? data.hasReplied : true;
+  // Don't set hasReplied from client - it should only be set when they actually send a guess
+  // If client sends hasReplied=false, that's fine (they're indicating they haven't replied yet)
+  // But we don't want to default to true, as that would cause stale flags
+  if (data.hasReplied === false) {
+    user.hasReplied = false;
+    user.replyOption = null;
+    // Remove from currentGameStats if they were in it
+    state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== userId);
+  }
+  // If hasReplied is true or undefined, we don't change it - let handleGuess set it properly
   
   // Update nickname if provided
   if (data.nickname && typeof data.nickname === 'string' && data.nickname.trim()) {

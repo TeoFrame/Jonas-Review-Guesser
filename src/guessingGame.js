@@ -498,11 +498,14 @@
         
         // Calculate reply counts from currentGameStats
         const replyCounts = {};
-        if (gameState.currentGameStats) {
+        if (gameState.currentGameStats && Array.isArray(gameState.currentGameStats)) {
           gameState.currentGameStats.forEach(stat => {
-            replyCounts[stat.answerValue] = (replyCounts[stat.answerValue] || 0) + 1;
+            const value = stat.answerValue;
+            replyCounts[value] = (replyCounts[value] || 0) + 1;
           });
         }
+        
+        // Always update reply counts first (before showing results)
         updateReplyCounts(replyCounts);
         
         // Show correct/wrong status ONLY if room is completed
@@ -513,6 +516,21 @@
           const buttons = wrap.querySelectorAll('.ext-guess-btn');
           buttons.forEach(btn => {
             const val = parseInt(btn.dataset.value, 10);
+            
+            // Ensure reply count is visible and updated before showing results
+            const countSpan = btn.querySelector('.ext-reply-count');
+            if (countSpan) {
+              // Recalculate count for this button value from currentGameStats
+              const count = replyCounts[val] || 0;
+              if (count > 0) {
+                countSpan.textContent = `(${count} user${count !== 1 ? 's' : ''})`;
+                countSpan.style.display = '';
+              } else if (countSpan.textContent) {
+                // Keep existing count visible if it exists
+                countSpan.style.display = '';
+              }
+            }
+            
             if (val === correct) {
               btn.classList.add("correct");
             }
@@ -712,8 +730,14 @@
               countSpan.style.display = '';
               console.log('[Co-op] Updated count for button value', value, 'to', count);
             } else {
-              countSpan.textContent = '';
-              countSpan.style.display = 'none';
+              // Don't hide the count span if it already has content (might be from previous state)
+              // Only hide if it's truly empty
+              if (!countSpan.textContent || countSpan.textContent.trim() === '') {
+                countSpan.style.display = 'none';
+              } else {
+                // Keep existing count visible
+                countSpan.style.display = '';
+              }
             }
           } else {
             console.warn('[Co-op] No count span found for button with value', value);
@@ -735,6 +759,26 @@
             console.log('[Co-op] Found', buttons.length, 'buttons to mark');
             buttons.forEach(btn => {
               const val = parseInt(btn.dataset.value, 10);
+              
+              // Ensure reply count is visible and updated before showing results
+              const countSpan = btn.querySelector('.ext-reply-count');
+              if (countSpan) {
+                // Recalculate count for this button value from replyCounts (already calculated above)
+                const count = replyCounts[val] || 0;
+                if (count > 0) {
+                  // Update with current count
+                  countSpan.textContent = `(${count} user${count !== 1 ? 's' : ''})`;
+                  countSpan.style.display = '';
+                  console.log('[Co-op] Set count for button value', val, 'to', count, 'before showing results');
+                } else {
+                  // If count is 0 but span has content, keep it visible (might be from previous update)
+                  if (countSpan.textContent && countSpan.textContent.trim() !== '') {
+                    countSpan.style.display = '';
+                    console.log('[Co-op] Keeping existing count visible for button value', val, ':', countSpan.textContent);
+                  }
+                }
+              }
+              
               if (val === correct) {
                 btn.classList.add("correct");
                 console.log('[Co-op] Added "correct" class to button with value', val);
