@@ -6,13 +6,17 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node start-dev.js",
+    "dev:manual": "node --watch server.js",
+    "generate-cert": "node generate-cert.js"
   },
   "dependencies": {
     "ws": "^8.16.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "selfsigned": "^4.0.0"
   }
 }
-

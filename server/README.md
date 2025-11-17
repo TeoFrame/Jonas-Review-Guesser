@@ -30,11 +30,49 @@ Or for production:
 npm start
 ```
 
-The server will run on `ws://localhost:8080` by default.
+The server requires SSL certificates and will run on `wss://` (secure WebSocket).
 
 ### 3. Environment Variables
 
-- `PORT` - Server port (default: 8080)
+- `PORT` - Server port (default: 443)
+- `SSL_KEY_PATH` - Path to SSL private key file (required)
+- `SSL_CERT_PATH` - Path to SSL certificate file (required)
+
+**SSL/WSS is required (for HTTPS pages like Steam):**
+
+1. **Generate SSL certificates** (self-signed for development):
+   ```bash
+   npm run generate-cert
+   ```
+   
+   This works on all platforms (Windows, Linux, Mac) and doesn't require OpenSSL.
+
+2. **Set environment variables:**
+   ```bash
+   # Linux/Mac
+   export SSL_KEY_PATH=$(pwd)/certs/private.key
+   export SSL_CERT_PATH=$(pwd)/certs/certificate.crt
+   
+   # Windows
+   set SSL_KEY_PATH=%CD%\certs\private.key
+   set SSL_CERT_PATH=%CD%\certs\certificate.crt
+   ```
+
+3. **Start the server:**
+   ```bash
+   npm start
+   ```
+
+**Important Notes:**
+
+- **Self-signed certificates**: Browsers will show a security warning when connecting to a server with self-signed certificates. Users must:
+  1. First visit the WebSocket URL directly in their browser (e.g., `https://31.43.142.49:443`) 
+  2. Click "Advanced" and accept the security warning to allow the certificate
+  3. After accepting, the extension will be able to connect to the server from Steam pages
+  
+- **Production**: For production, use certificates from a trusted Certificate Authority (e.g., Let's Encrypt) to avoid browser warnings.
+
+The server requires SSL certificates to start. It will exit with an error if SSL_KEY_PATH or SSL_CERT_PATH are not set.
 
 ## Usage
 
@@ -43,8 +81,10 @@ The server will run on `ws://localhost:8080` by default.
 Connect to the server with a room ID:
 
 ```
-ws://localhost:8080/?room=ROOM_CODE
+wss://your-server.com:443/?room=ROOM_CODE
 ```
+
+Note: The server only supports secure WebSocket (wss://) connections.
 
 ### Message Protocol
 

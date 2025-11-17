@@ -2,4 +2,8 @@ node_modules/
 .env
 *.log
 .DS_Store
+certs/
+*.key
+*.crt
+*.csr
 

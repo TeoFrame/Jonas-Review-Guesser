@@ -6,8 +6,8 @@
 (function (root) {
   const ns = (root.ReviewGuesser = root.ReviewGuesser || {});
   
-  // Default server URL (can be overridden)
-  const DEFAULT_SERVER_URL = 'ws://localhost:8080';
+  // Get default server URL from config
+  const DEFAULT_SERVER_URL = (ns.config && ns.config.DEFAULT_SERVER_URL) || 'ws://localhost:8080';
   
   // Co-op state
   const coopState = {
@@ -649,33 +649,6 @@
     };
   }
 
-  /**
-   * Test connection (for Phase 1 testing)
-   * @param {string} serverUrl - Server URL to test
-   * @param {string} roomId - Room ID to test with
-   */
-  async function testConnection(serverUrl = DEFAULT_SERVER_URL, roomId = 'test-room') {
-    console.log('[Co-op] Starting connection test...');
-    console.log(`[Co-op] Server: ${serverUrl}`);
-    console.log(`[Co-op] Room: ${roomId}`);
-
-    try {
-      await connectToRoom(roomId, serverUrl);
-      console.log('[Co-op] ✅ Connection test successful!');
-      console.log('[Co-op] Status:', getStatus());
-      
-      // Test sending a message after 2 seconds
-      setTimeout(() => {
-        if (coopState.isConnected) {
-          console.log('[Co-op] Testing message send...');
-          coopState.client.sendUserReady(true);
-        }
-      }, 2000);
-    } catch (error) {
-      console.error('[Co-op] ❌ Connection test failed:', error);
-      console.log('[Co-op] Make sure the server is running: cd server && npm run dev');
-    }
-  }
 
   /**
    * Attempt to reconnect using saved connection info
@@ -742,7 +715,6 @@
     connect: connect,
     disconnect: disconnect,
     getStatus: getStatus,
-    testConnection: testConnection,
     attemptReconnection: attemptReconnection,
     saveConnectionInfo: saveConnectionInfo,
     getState: () => ({ ...coopState }), // Read-only state access
@@ -827,67 +799,5 @@
     });
   }
 
-  /**
-   * Test sessionStorage access
-   */
-  async function testStorageAccess() {
-    console.log('[Co-op] Testing sessionStorage access...');
-    
-    try {
-      // Test write
-      const testKey = 'coopTest';
-      const testValue = 'test-value-' + Date.now();
-      sessionStorage.setItem(testKey, testValue);
-      console.log('[Co-op] ✅ sessionStorage write test: SUCCESS');
-      
-      // Test read
-      const result = sessionStorage.getItem(testKey);
-      if (result === testValue) {
-        console.log('[Co-op] ✅ sessionStorage read test: SUCCESS', result);
-      } else {
-        console.error('[Co-op] ❌ sessionStorage read test: FAILED - value mismatch');
-        return false;
-      }
-      
-      // Clean up
-      sessionStorage.removeItem(testKey);
-      
-      return true;
-    } catch (error) {
-      console.error('[Co-op] ❌ sessionStorage test failed:', error);
-      return false;
-    }
-  }
-
-  // Expose test function globally for console testing
-  // Use setTimeout to ensure window is ready (for content scripts)
-  if (typeof window !== 'undefined') {
-    // Expose on window directly
-    window.testCoopConnection = testConnection;
-    window.testCoopStorage = testStorageAccess;
-    
-    // Also expose via ReviewGuesser namespace (more reliable)
-    ns.testCoopConnection = testConnection;
-    ns.testCoopStorage = testStorageAccess;
-    
-    // Use setTimeout to ensure it's available after script execution
-    setTimeout(async () => {
-      if (!window.testCoopConnection) {
-        window.testCoopConnection = testConnection;
-      }
-      if (!window.testCoopStorage) {
-        window.testCoopStorage = testStorageAccess;
-      }
-      
-      // Test storage access on initialization
-      await testStorageAccess();
-      
-      console.log('[Co-op] ✅ Test functions available:');
-      console.log('  - testCoopConnection(serverUrl, roomId)');
-      console.log('  - testCoopStorage() - test sessionStorage access');
-      console.log('  - ReviewGuesser.coop.testConnection(serverUrl, roomId)');
-      console.log('  Example: testCoopConnection("ws://localhost:8080", "test-room")');
-    }, 100);
-  }
 })(window);
 

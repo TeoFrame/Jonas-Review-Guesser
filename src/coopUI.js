@@ -6,8 +6,8 @@
 (function (root) {
   const ns = (root.ReviewGuesser = root.ReviewGuesser || {});
 
-  // Default server URL (can be configured)
-  const DEFAULT_SERVER_URL = 'ws://localhost:8080';
+  // Get default server URL from config
+  const DEFAULT_SERVER_URL = (ns.config && ns.config.DEFAULT_SERVER_URL) || 'ws://localhost:8080';
   
   // UI state
   let uiState = {

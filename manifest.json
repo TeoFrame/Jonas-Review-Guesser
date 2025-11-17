@@ -15,6 +15,7 @@
         "src/pageDetection.js",
         "src/reviewCounts.js",
         "src/seededRandom.js",
+        "src/config.js",
         "src/guessingGame.js",
         "src/nextGame.js",
         "src/websocketClient.js",

@@ -594,11 +594,14 @@
     window.addEventListener('coop-reply-counts-update', replyCountsListener);
     console.log('[Co-op] Listener added, total listeners:', window.getEventListeners ? 'N/A' : 'check manually');
     
+    // Define checkAllReplied function in outer scope so it's accessible everywhere
+    let checkAllReplied = null;
+    
     // Also listen for game state updates to check if all users replied
     // NOTE: This listener is kept for backward compatibility but results should be shown
     // via the global checkAllUsersRepliedGlobally function instead
     if (correctAnswer !== undefined && showResultsFn) {
-      const checkAllReplied = () => {
+      checkAllReplied = () => {
         if (wrap.dataset.resultsShown === '1') return;
         
         if (!ns.coop || !ns.coop.getState) return;
@@ -634,13 +637,17 @@
       
       // Check on reply count updates
       const checkAllRepliedListener = () => {
-        checkAllReplied();
+        if (checkAllReplied) {
+          checkAllReplied();
+        }
       };
       window.addEventListener('coop-reply-counts-update', checkAllRepliedListener);
       
       // Also check periodically in case event is missed
       const checkInterval = setInterval(() => {
-        checkAllReplied();
+        if (checkAllReplied) {
+          checkAllReplied();
+        }
         if (wrap.dataset.resultsShown === '1') {
           clearInterval(checkInterval);
         }
@@ -677,7 +684,11 @@
     // Also listen for user-joined events to check if all replied
     if (checkAllReplied) {
       window.addEventListener('coop-status-change', () => {
-        setTimeout(checkAllReplied, 100);
+        setTimeout(() => {
+          if (checkAllReplied) {
+            checkAllReplied();
+          }
+        }, 100);
       });
     }
   }
