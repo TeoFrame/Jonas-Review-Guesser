@@ -16,6 +16,7 @@
     roomId: null,
     connectionId: null,
     userId: null, // Persistent user ID for reconnection
+    nickname: null, // User's nickname
     gameState: null,
     serverUrl: DEFAULT_SERVER_URL,
     isReconnecting: false, // Flag to prevent infinite reconnection loops
@@ -170,6 +171,11 @@
               // Ignore storage errors
             }
           }
+          
+          // If user already has a name, use it (reconnection)
+          if (user.name && !coopState.nickname) {
+            coopState.nickname = user.name;
+          }
         }
       }
       
@@ -177,6 +183,37 @@
       if (!coopState.userId) {
         console.warn('[Co-op] No userId after connection, generating one...');
         getOrCreateUserId().catch(err => console.error('[Co-op] Error generating userId:', err));
+      }
+      
+      // Prompt for nickname if not set
+      if (!coopState.nickname) {
+        const nickname = prompt('Enter your nickname:') || '';
+        const trimmedNickname = nickname.trim();
+        if (trimmedNickname) {
+          coopState.nickname = trimmedNickname;
+          // Save nickname to sessionStorage
+          try {
+            sessionStorage.setItem('coopNickname', trimmedNickname);
+          } catch (e) {
+            // Ignore storage errors
+          }
+          
+          // Send nickname to server
+          if (coopState.client && coopState.isConnected) {
+            coopState.client.sendUserReady(true, trimmedNickname);
+          }
+        } else {
+          // Use default name if user cancels
+          coopState.nickname = `User ${coopState.userId ? coopState.userId.slice(-6) : 'Unknown'}`;
+          if (coopState.client && coopState.isConnected) {
+            coopState.client.sendUserReady(true, coopState.nickname);
+          }
+        }
+      } else {
+        // Send existing nickname to server (reconnection)
+        if (coopState.client && coopState.isConnected) {
+          coopState.client.sendUserReady(true, coopState.nickname);
+        }
       }
       
       // Save connection info immediately after successful connection
@@ -209,7 +246,10 @@
 
     // Reply counts updated
     coopState.client.on('reply-counts-update', (data) => {
-      console.log('[Co-op] Reply counts updated:', data.replyCounts);
+      console.log('[Co-op] Reply counts updated:', data);
+      console.log('[Co-op] GameState:', data.gameState);
+      console.log('[Co-op] CurrentGameStats:', data.gameState?.currentGameStats);
+      console.log('[Co-op] RoomStatus:', data.gameState?.roomStatus);
       if (data.gameState) {
         coopState.gameState = data.gameState;
       }
@@ -349,7 +389,22 @@
     // Score update
     coopState.client.on('score-update', (data) => {
       console.log('[Co-op] Score update:', data);
-      coopState.gameState = data.gameState;
+      // Update gameState, merging with existing state to preserve other fields
+      if (data.gameState) {
+        if (coopState.gameState) {
+          coopState.gameState = {
+            ...coopState.gameState,
+            ...data.gameState,
+            users: data.gameState.users || coopState.gameState.users,
+          };
+        } else {
+          coopState.gameState = data.gameState;
+        }
+      }
+      // Dispatch event for UI updates
+      window.dispatchEvent(new CustomEvent('coop-score-update', {
+        detail: data
+      }));
     });
 
     // Reply status update
@@ -361,7 +416,21 @@
     // Leaderboard reset
     coopState.client.on('leaderboard-reset', (data) => {
       console.log('[Co-op] Leaderboard reset');
-      coopState.gameState = data.gameState;
+      if (data.gameState) {
+        if (coopState.gameState) {
+          coopState.gameState = {
+            ...coopState.gameState,
+            ...data.gameState,
+            users: data.gameState.users || coopState.gameState.users,
+          };
+        } else {
+          coopState.gameState = data.gameState;
+        }
+      }
+      // Dispatch event for UI updates
+      window.dispatchEvent(new CustomEvent('coop-leaderboard-reset', {
+        detail: data
+      }));
     });
   }
 
@@ -378,10 +447,16 @@
       sessionStorage.setItem('coopConnected', 'true');
       sessionStorage.setItem('coopUserId', userId);
       
+      // Save nickname if available
+      if (coopState.nickname) {
+        sessionStorage.setItem('coopNickname', coopState.nickname);
+      }
+      
       console.log('[Co-op] ✅ Connection info saved to sessionStorage:', {
         roomId,
         serverUrl,
         userId,
+        nickname: coopState.nickname,
       });
       
       // Verify it was saved
@@ -403,7 +478,7 @@
       sessionStorage.removeItem('coopRoomId');
       sessionStorage.removeItem('coopServerUrl');
       sessionStorage.removeItem('coopConnected');
-      // Note: We keep coopUserId so user keeps same ID across sessions
+      // Note: We keep coopUserId and coopNickname so user keeps same ID and nickname across sessions
       console.log('[Co-op] Connection info cleared from sessionStorage');
     } catch (error) {
       console.warn('[Co-op] Could not clear connection info:', error);
@@ -421,8 +496,9 @@
       const serverUrl = sessionStorage.getItem('coopServerUrl');
       const connected = sessionStorage.getItem('coopConnected');
       const userId = sessionStorage.getItem('coopUserId');
+      const nickname = sessionStorage.getItem('coopNickname');
       
-      console.log('[Co-op] SessionStorage result:', { roomId, serverUrl, connected, userId });
+      console.log('[Co-op] SessionStorage result:', { roomId, serverUrl, connected, userId, nickname });
       
       if (connected === 'true' && roomId) {
         // Restore user ID if available
@@ -430,11 +506,17 @@
           coopState.userId = userId;
         }
         
+        // Restore nickname if available
+        if (nickname) {
+          coopState.nickname = nickname;
+        }
+        
         console.log('[Co-op] ✅ Found saved connection info in sessionStorage');
         return {
           roomId,
           serverUrl: serverUrl || DEFAULT_SERVER_URL,
           userId,
+          nickname,
         };
       } else {
         console.log('[Co-op] No valid connection info in sessionStorage');

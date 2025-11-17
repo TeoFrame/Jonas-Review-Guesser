@@ -239,11 +239,12 @@ class WebSocketClient {
    * @param {number} guess - The guess value
    * @param {string} gameId - Current game ID
    */
-  sendGuess(guess, gameId) {
+  sendGuess(guess, gameId, correctAnswer = null) {
     this.send({
       type: 'guess',
       guess: guess,
       gameId: gameId,
+      correctAnswer: correctAnswer,
     });
   }
 
@@ -253,6 +254,15 @@ class WebSocketClient {
   sendCorrectGuess() {
     this.send({
       type: 'correct-guess',
+    });
+  }
+
+  /**
+   * Send a wrong guess notification
+   */
+  sendWrongGuess() {
+    this.send({
+      type: 'wrong-guess',
     });
   }
 
@@ -284,10 +294,11 @@ class WebSocketClient {
    * Update user ready/reply status
    * @param {boolean} hasReplied - Whether user has replied
    */
-  sendUserReady(hasReplied = true) {
+  sendUserReady(hasReplied = true, nickname = null) {
     this.send({
       type: 'user-ready',
       hasReplied: hasReplied,
+      nickname: nickname,
     });
   }
 

@@ -14,6 +14,7 @@
     container: null,
     buttonsContainer: null,
     statusElement: null,
+    leaderboardElement: null,
     isInstalled: false,
     serverUrl: DEFAULT_SERVER_URL,
   };
@@ -83,8 +84,18 @@
     `;
     uiState.buttonsContainer = buttonsDiv;
 
+    // Leaderboard container
+    const leaderboardDiv = document.createElement('div');
+    leaderboardDiv.className = 'ext-coop-leaderboard';
+    leaderboardDiv.style.cssText = `
+      margin-top: 12px;
+      display: none;
+    `;
+    uiState.leaderboardElement = leaderboardDiv;
+
     container.appendChild(statusDiv);
     container.appendChild(buttonsDiv);
+    container.appendChild(leaderboardDiv);
 
     return container;
   }
@@ -286,6 +297,115 @@
   }
 
   /**
+   * Update leaderboard display
+   */
+  function updateLeaderboard() {
+    if (!uiState.leaderboardElement || !ns.coop) return;
+    
+    const state = ns.coop.getState();
+    if (!state.gameState || !state.gameState.users || !state.gameState.leaderboard) {
+      uiState.leaderboardElement.style.display = 'none';
+      return;
+    }
+
+    const allUsers = Object.values(state.gameState.users);
+    const onlineUsers = allUsers.filter(u => u.isOnline);
+    
+    // Only update leaderboard if room is completed (to prevent premature updates)
+    if (state.gameState.roomStatus !== 'completed') {
+      return;
+    }
+    
+    // If only 1 user online, show just numbers
+    if (onlineUsers.length <= 1) {
+      if (onlineUsers.length === 1 && state.gameState.leaderboard.length > 0) {
+        const user = onlineUsers[0];
+        const entry = state.gameState.leaderboard.find(e => e.userId === user.userId);
+        if (entry) {
+          const total = entry.correctAnswers + entry.failedAnswers;
+          const percentage = total > 0 
+            ? Math.round((entry.correctAnswers / total) * 100) 
+            : 0;
+          uiState.leaderboardElement.innerHTML = `
+            <div style="font-size: 12px; color: rgba(255, 255, 255, 0.7);">
+              Correct: ${entry.correctAnswers || 0} | Failed: ${entry.failedAnswers || 0} | Total: ${total} | ${percentage}%
+            </div>
+          `;
+          uiState.leaderboardElement.style.display = 'block';
+        } else {
+          uiState.leaderboardElement.style.display = 'none';
+        }
+      } else {
+        uiState.leaderboardElement.style.display = 'none';
+      }
+      return;
+    }
+
+    // Map leaderboard entries to user info
+    const leaderboardWithUsers = state.gameState.leaderboard
+      .map(entry => {
+        const user = state.gameState.users[entry.userId];
+        if (!user) return null;
+        const total = entry.correctAnswers + entry.failedAnswers;
+        const percentage = total > 0 
+          ? Math.round((entry.correctAnswers / total) * 100) 
+          : 0;
+        return {
+          ...entry,
+          ...user,
+          total,
+          percentage,
+        };
+      })
+      .filter(item => item !== null)
+      .sort((a, b) => {
+        // Sort by percentage descending, then by total descending
+        if (b.percentage !== a.percentage) {
+          return b.percentage - a.percentage;
+        }
+        return b.total - a.total;
+      });
+
+    // Build leaderboard HTML
+    let html = '<div style="font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-bottom: 6px; font-weight: 600;">Leaderboard</div>';
+    
+    leaderboardWithUsers.forEach((entry) => {
+      html += `
+        <div style="
+          display: flex;
+          align-items: center;
+          padding: 6px 8px;
+          margin-bottom: 4px;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 4px;
+          border-left: 3px solid ${entry.color || '#66C0F4'};
+          font-size: 12px;
+        ">
+          <div style="
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: ${entry.color || '#66C0F4'};
+            margin-right: 8px;
+            flex-shrink: 0;
+          "></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="color: rgba(255, 255, 255, 0.9); font-weight: 600; margin-bottom: 2px;">
+              ${entry.name || 'User'}
+            </div>
+            <div style="color: rgba(255, 255, 255, 0.6); font-size: 11px;">
+              ✓ ${entry.correctAnswers || 0} | ✗ ${entry.failedAnswers || 0} | Total: ${entry.total} | ${entry.percentage}%
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    uiState.leaderboardElement.innerHTML = html;
+    uiState.leaderboardElement.style.display = 'block';
+  }
+
+  /**
    * Set up listener for connection status changes
    */
   function setupStatusListener(joinBtn, disconnectBtn) {
@@ -294,6 +414,7 @@
     const updateButtons = () => {
       const status = ns.coop.getStatus();
       updateStatus(status);
+      updateLeaderboard();
 
       const isConnected = status.isConnected;
       
@@ -317,19 +438,48 @@
       updateButtons();
     });
     
-    // Also listen for game state updates to update online count
+    // Also listen for game state updates to update online count (but not leaderboard until all users reply)
     window.addEventListener('coop-reply-counts-update', (event) => {
       updateButtons();
+      // Don't update leaderboard here - it will update on score-update after all users reply
     });
     window.addEventListener('coop-next-game-vote-update', (event) => {
       updateButtons();
+      updateLeaderboard();
     });
     window.addEventListener('coop-next-game-selected', (event) => {
       updateButtons();
+      updateLeaderboard();
     });
 
+    // Listen for score updates
+    window.addEventListener('coop-score-update', () => {
+      updateLeaderboard();
+    });
+    
+    // Listen for leaderboard reset
+    window.addEventListener('coop-leaderboard-reset', () => {
+      updateLeaderboard();
+    });
+    
+    // Also listen directly to client events if available
+    if (ns.coop && ns.coop.getState) {
+      const state = ns.coop.getState();
+      if (state.client) {
+        state.client.on('score-update', () => {
+          updateLeaderboard();
+        });
+        state.client.on('leaderboard-reset', () => {
+          updateLeaderboard();
+        });
+      }
+    }
+
     // Fallback: also poll periodically (in case events don't fire)
-    setInterval(updateButtons, 2000);
+    setInterval(() => {
+      updateButtons();
+      updateLeaderboard();
+    }, 2000);
   }
 
   // Expose API

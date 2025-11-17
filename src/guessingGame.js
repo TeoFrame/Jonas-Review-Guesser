@@ -256,6 +256,9 @@
     }
 
     if (wrap.dataset.state !== "ready") {
+      // Reset results shown flag for new game
+      wrap.dataset.resultsShown = '0';
+      
       // Use seeded random based on appId for co-op consistency
       const guesses = buildGuessSet(trueCount, appId);
       wrap.dataset.guesses = JSON.stringify(guesses);
@@ -289,6 +292,27 @@
       const correct = trueCount;
       let userPickedValue = null; // Store user's pick
       
+      // Define showResults function that only shows results when all users have replied (in co-op mode)
+      const showResults = (buttons, correctAnswer, userPick) => {
+        // Validate that all online users have replied before showing status colors
+        if (!allOnlineUsersReplied()) {
+          console.log('[Co-op] showResults called but not all users replied yet, skipping');
+          return;
+        }
+        
+        // Show results (either non-co-op mode or all users have replied in co-op mode)
+        buttons.forEach((btn) => {
+          const val = parseInt(btn.dataset.value, 10);
+          if (val === correctAnswer) {
+            btn.classList.add("correct");
+          }
+          if (val === userPick && val !== correctAnswer) {
+            btn.classList.add("wrong");
+          }
+          btn.classList.remove("user-selected");
+        });
+      };
+      
       const mark = (picked) => {
         if (wrap.dataset.locked === "1") return;
         wrap.dataset.locked = "1";
@@ -312,12 +336,13 @@
         if (ns.coop && ns.coop.getState) {
           const state = ns.coop.getState();
           if (state.client && state.isConnected) {
-            state.client.sendGuess(picked, appId);
-            console.log('[Co-op] Sent guess:', picked);
+            // Send correct answer along with guess
+            state.client.sendGuess(picked, appId, correct);
+            console.log('[Co-op] Sent guess:', picked, 'correct answer:', correct);
           }
         }
         
-        // Highlight user's selection
+        // Highlight user's selection ONLY (no correct/wrong status yet)
         btns.forEach((btn) => {
           const val = parseInt(btn.dataset.value, 10);
           if (val === picked) {
@@ -355,6 +380,13 @@
         // Get correct answer from dataset
         const correctAnswer = parseInt(wrap.dataset.truecount, 10) || 0;
         const showResultsFn = (buttons, correct, userPick) => {
+          // Validate that all online users have replied before showing status colors
+          if (!allOnlineUsersReplied()) {
+            console.log('[Co-op] showResultsFn called but not all users replied yet, skipping');
+            return;
+          }
+          
+          // Show results (all users have replied)
           buttons.forEach((btn) => {
             const val = parseInt(btn.dataset.value, 10);
             if (val === correct) btn.classList.add("correct");
@@ -367,6 +399,41 @@
         setupReplyCountUpdates(wrap, Array.from(existingBtns), correctAnswer, showResultsFn);
       }
     }
+  }
+
+  /**
+   * Check if all online users have replied (for co-op mode)
+   * @param {Object} gameState - Optional gameState to check (if not provided, uses current state)
+   * @returns {boolean} True if all online users have replied, false otherwise
+   */
+  function allOnlineUsersReplied(gameState = null) {
+    if (!ns.coop || !ns.coop.getState) {
+      // Non-co-op mode: always return true (no validation needed)
+      return true;
+    }
+    
+    // Use provided gameState or get from current state
+    let users = null;
+    if (gameState && gameState.users) {
+      users = gameState.users;
+    } else {
+      const state = ns.coop.getState();
+      if (!state || !state.gameState || !state.gameState.users) {
+        return false;
+      }
+      users = state.gameState.users;
+    }
+    
+    const allUsers = Object.values(users);
+    const onlineUsers = allUsers.filter(u => u.isOnline);
+    
+    // If no online users, return false
+    if (onlineUsers.length === 0) {
+      return false;
+    }
+    
+    // Check if all online users have replied
+    return onlineUsers.every(u => u.hasReplied);
   }
 
   /**
@@ -417,10 +484,55 @@
     // Listen for reply count updates
     const replyCountsListener = (event) => {
       console.log('[Co-op] ✅ Reply counts update event received in guessingGame.js:', event.detail);
-      if (event.detail && event.detail.replyCounts) {
-        updateReplyCounts(event.detail.replyCounts);
+      if (event.detail && event.detail.gameState) {
+        const gameState = event.detail.gameState;
+        
+        // If room is in progress, reset UI state
+        if (gameState.roomStatus === 'in_progress') {
+          wrap.dataset.resultsShown = '0';
+          const buttons = wrap.querySelectorAll('.ext-guess-btn');
+          buttons.forEach(btn => {
+            btn.classList.remove("correct", "wrong");
+          });
+        }
+        
+        // Calculate reply counts from currentGameStats
+        const replyCounts = {};
+        if (gameState.currentGameStats) {
+          gameState.currentGameStats.forEach(stat => {
+            replyCounts[stat.answerValue] = (replyCounts[stat.answerValue] || 0) + 1;
+          });
+        }
+        updateReplyCounts(replyCounts);
+        
+        // Show correct/wrong status ONLY if room is completed
+        if (gameState.roomStatus === 'completed' && gameState.correctAnswer !== null) {
+          if (wrap.dataset.resultsShown === '1') return; // Already shown
+          
+          const correct = gameState.correctAnswer;
+          const buttons = wrap.querySelectorAll('.ext-guess-btn');
+          buttons.forEach(btn => {
+            const val = parseInt(btn.dataset.value, 10);
+            if (val === correct) {
+              btn.classList.add("correct");
+            }
+            // Mark wrong answers (user's selection that was wrong)
+            if (ns.coop && ns.coop.getState) {
+              const state = ns.coop.getState();
+              const currentUserId = state.userId;
+              if (currentUserId && gameState.users[currentUserId]) {
+                const userPick = gameState.users[currentUserId].replyOption;
+                if (val === userPick && val !== correct) {
+                  btn.classList.add("wrong");
+                }
+              }
+            }
+            btn.classList.remove("user-selected");
+          });
+          wrap.dataset.resultsShown = '1';
+        }
       } else {
-        console.warn('[Co-op] Event received but no replyCounts in detail:', event.detail);
+        console.warn('[Co-op] Event received but no gameState in detail:', event.detail);
       }
     };
     console.log('[Co-op] Setting up reply counts listener for wrap:', wrap);
@@ -428,6 +540,8 @@
     console.log('[Co-op] Listener added, total listeners:', window.getEventListeners ? 'N/A' : 'check manually');
     
     // Also listen for game state updates to check if all users replied
+    // NOTE: This listener is kept for backward compatibility but results should be shown
+    // via the global checkAllUsersRepliedGlobally function instead
     if (correctAnswer !== undefined && showResultsFn) {
       const checkAllReplied = () => {
         if (wrap.dataset.resultsShown === '1') return;
@@ -441,7 +555,8 @@
         const onlineUsers = allUsers.filter(u => u.isOnline);
         const allReplied = onlineUsers.length > 0 && onlineUsers.every(u => u.hasReplied);
         
-        if (allReplied) {
+        // Only show results if ALL users have replied
+        if (allReplied && onlineUsers.length > 0) {
           wrap.dataset.resultsShown = '1';
           
           // Find current user by userId
@@ -519,93 +634,159 @@
     if (window.__coopReplyCountListenerSetUp) return;
     window.__coopReplyCountListenerSetUp = true;
     
-    window.addEventListener('coop-reply-counts-update', (event) => {
-      if (event.detail && event.detail.replyCounts) {
-        // Find all guess buttons on the page and update them
+  // Track last gameId to detect new games
+  let lastGameId = null;
+  
+  // Listen for next-game-selected to reset UI state
+  window.addEventListener('coop-next-game-selected', (event) => {
+    if (event.detail && event.detail.gameState) {
+      const gameState = event.detail.gameState;
+      console.log('[Co-op] Next game selected, resetting UI state. New gameId:', gameState.currentGameId);
+      lastGameId = gameState.currentGameId;
+      
+      // Reset UI state for new game
+      const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
+      wraps.forEach(wrap => {
+        wrap.dataset.resultsShown = '0'; // Reset results shown flag
+        const buttons = wrap.querySelectorAll('.ext-guess-btn');
+        buttons.forEach(btn => {
+          btn.classList.remove("correct", "wrong", "user-selected");
+        });
+      });
+    }
+  });
+  
+  window.addEventListener('coop-reply-counts-update', (event) => {
+    console.log('[Co-op] Global reply-counts-update event received:', event.detail);
+    if (event.detail && event.detail.gameState) {
+      const gameState = event.detail.gameState;
+      console.log('[Co-op] GameState in global listener:', {
+        currentGameId: gameState.currentGameId,
+        roomStatus: gameState.roomStatus,
+        currentGameStats: gameState.currentGameStats,
+        correctAnswer: gameState.correctAnswer
+      });
+      
+      // Check if this is a new game (gameId changed)
+      const isNewGame = lastGameId !== null && gameState.currentGameId !== lastGameId;
+        if (isNewGame || lastGameId === null) {
+          lastGameId = gameState.currentGameId;
+          console.log('[Co-op] New game detected, resetting UI state');
+          
+          // Reset UI state for new game
+          const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
+          wraps.forEach(wrap => {
+            wrap.dataset.resultsShown = '0'; // Reset results shown flag
+            const buttons = wrap.querySelectorAll('.ext-guess-btn');
+            buttons.forEach(btn => {
+              btn.classList.remove("correct", "wrong", "user-selected");
+            });
+          });
+        }
+        
+        // Calculate reply counts from currentGameStats
+        const replyCounts = {};
+        if (gameState.currentGameStats && Array.isArray(gameState.currentGameStats)) {
+          console.log('[Co-op] Processing currentGameStats:', gameState.currentGameStats);
+          gameState.currentGameStats.forEach(stat => {
+            const value = stat.answerValue;
+            replyCounts[value] = (replyCounts[value] || 0) + 1;
+          });
+          console.log('[Co-op] Calculated replyCounts:', replyCounts);
+        } else {
+          console.log('[Co-op] No currentGameStats or not an array:', gameState.currentGameStats);
+        }
+        
+        // Find all guess buttons on the page and update them with reply counts
         const allButtons = document.querySelectorAll('.ext-guess-btn');
+        console.log('[Co-op] Found', allButtons.length, 'buttons to update');
         
         allButtons.forEach(btn => {
           const value = parseInt(btn.dataset.value, 10);
-          const count = event.detail.replyCounts[value] !== undefined 
-            ? event.detail.replyCounts[value] 
-            : (event.detail.replyCounts[String(value)] || 0);
+          const count = replyCounts[value] || 0;
           
           const countSpan = btn.querySelector('.ext-reply-count');
           if (countSpan) {
             if (count > 0) {
               countSpan.textContent = `(${count} user${count !== 1 ? 's' : ''})`;
               countSpan.style.display = '';
+              console.log('[Co-op] Updated count for button value', value, 'to', count);
             } else {
               countSpan.textContent = '';
               countSpan.style.display = 'none';
             }
+          } else {
+            console.warn('[Co-op] No count span found for button with value', value);
           }
         });
         
-        // Also check if all users replied and show results
-        if (event.detail.gameState && event.detail.gameState.users) {
-          checkAllUsersRepliedGlobally(event.detail.gameState);
+        // Show correct/wrong status ONLY if room is completed
+        if (gameState.roomStatus === 'completed' && gameState.correctAnswer !== null) {
+          console.log('[Co-op] Room is completed, showing results. Correct answer:', gameState.correctAnswer);
+          const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
+          wraps.forEach(wrap => {
+            if (wrap.dataset.resultsShown === '1') {
+              console.log('[Co-op] Results already shown for this wrap');
+              return;
+            }
+            
+            const correct = gameState.correctAnswer;
+            const buttons = wrap.querySelectorAll('.ext-guess-btn');
+            console.log('[Co-op] Found', buttons.length, 'buttons to mark');
+            buttons.forEach(btn => {
+              const val = parseInt(btn.dataset.value, 10);
+              if (val === correct) {
+                btn.classList.add("correct");
+                console.log('[Co-op] Added "correct" class to button with value', val);
+              }
+              // Mark wrong answers (user's selection that was wrong)
+              if (ns.coop && ns.coop.getState) {
+                const state = ns.coop.getState();
+                const currentUserId = state.userId;
+                if (currentUserId && gameState.users[currentUserId]) {
+                  const userPick = gameState.users[currentUserId].replyOption;
+                  if (val === userPick && val !== correct) {
+                    btn.classList.add("wrong");
+                    console.log('[Co-op] Added "wrong" class to button with value', val);
+                  }
+                }
+              }
+              btn.classList.remove("user-selected");
+            });
+            wrap.dataset.resultsShown = '1';
+            console.log('[Co-op] Marked results as shown');
+          });
+        } else {
+          console.log('[Co-op] Not showing results - roomStatus:', gameState.roomStatus, 'correctAnswer:', gameState.correctAnswer);
         }
+      } else {
+        console.warn('[Co-op] Event received but no gameState in detail:', event.detail);
       }
     });
   }
   
   /**
    * Check if all users replied and show results globally
+   * DEPRECATED: Now handled by roomStatus === 'completed' in reply-counts-update listener
    */
   function checkAllUsersRepliedGlobally(gameState) {
-    if (!ns.coop || !ns.coop.getState) return;
-    
-    const state = ns.coop.getState();
-    if (!state.userId && !state.connectionId) return;
-    
-    const allUsers = Object.values(gameState.users);
-    const onlineUsers = allUsers.filter(u => u.isOnline);
-    const allReplied = onlineUsers.length > 0 && onlineUsers.every(u => u.hasReplied);
-    
-    if (allReplied) {
-      // Find current user
-      const currentUserId = state.userId || (state.connectionId && Object.keys(gameState.users).find(uid => {
-        const user = gameState.users[uid];
-        return user && user.id === state.connectionId;
-      }));
-      
-      if (currentUserId && gameState.users[currentUserId]) {
-        const userPick = gameState.users[currentUserId].replyOption;
-        if (userPick !== null) {
-          // Find the wrap element and correct answer
-          const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
-          wraps.forEach(wrap => {
-            if (wrap.dataset.resultsShown === '1') return; // Already shown
-            
-            const correct = parseInt(wrap.dataset.truecount, 10);
-            const buttons = wrap.querySelectorAll('.ext-guess-btn');
-            
-            if (buttons.length > 0) {
-              wrap.dataset.resultsShown = '1';
-              console.log('[Co-op] All users replied, showing results globally. User pick:', userPick, 'Correct:', correct);
-              
-              buttons.forEach(btn => {
-                const val = parseInt(btn.dataset.value, 10);
-                if (val === correct) {
-                  btn.classList.add("correct");
-                }
-                if (val === userPick && val !== correct) {
-                  btn.classList.add("wrong");
-                }
-                btn.classList.remove("user-selected");
-              });
-            }
-          });
-        }
-      }
-    }
+    // This function is now deprecated - results are shown based on roomStatus
+    // Keeping for backward compatibility but it should not be called
+    return;
   }
   
   // Set up periodic check for all users replied (fallback)
+  // Only check if results haven't been shown yet
   if (typeof window !== 'undefined' && !window.__coopAllRepliedChecker) {
     window.__coopAllRepliedChecker = setInterval(() => {
       if (!ns.coop || !ns.coop.getState) return;
+      
+      // Check if results are already shown - if so, skip
+      const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
+      const allResultsShown = wraps.length > 0 && Array.from(wraps).every(wrap => wrap.dataset.resultsShown === '1');
+      if (allResultsShown) {
+        return; // Results already shown, no need to check
+      }
       
       const state = ns.coop.getState();
       if (state.gameState && state.gameState.users) {

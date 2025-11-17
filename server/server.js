@@ -7,6 +7,9 @@ import { randomUUID } from 'crypto';
  * @property {string} userId - Persistent user ID (for reconnection)
  * @property {string} name - User display name
  * @property {number} score - Number of correct guesses
+ * @property {number} failedGuesses - Number of failed guesses
+ * @property {number} totalGuesses - Total number of guesses made
+ * @property {string} color - Unique color assigned to this user (hex format)
  * @property {boolean} isOnline - Whether user is currently connected
  * @property {boolean} hasReplied - Whether user has replied to current game
  * @property {number|null} replyOption - Which option the user replied with (null if not replied)
@@ -14,11 +17,27 @@ import { randomUUID } from 'crypto';
  */
 
 /**
+ * @typedef {Object} LeaderboardEntry
+ * @property {string} userId - User ID
+ * @property {number} correctAnswers - Number of correct guesses
+ * @property {number} failedAnswers - Number of failed guesses
+ */
+
+/**
+ * @typedef {Object} CurrentGameStat
+ * @property {string} userId - User ID
+ * @property {number} answerValue - The answer value the user selected
+ */
+
+/**
  * @typedef {Object} GameState
  * @property {string} currentGameId - Current game/app ID
  * @property {Record<string, User>} users - Map of userId to users (persistent across disconnections)
  * @property {Record<string, string>} connectionToUserId - Map of connectionId to userId (for quick lookup)
- * @property {Record<number, number>} replyCounts - Map of option value to count of users who replied with it
+ * @property {LeaderboardEntry[]} leaderboard - Array of leaderboard entries
+ * @property {string} roomStatus - Room status: 'in_progress' or 'completed'
+ * @property {CurrentGameStat[]} currentGameStats - Array of current game stats (user answers)
+ * @property {number|null} correctAnswer - The correct answer for the current game (null if not set)
  * @property {Record<string, number>} nextGameVotes - Map of vote option ('raw' or 'smart') to count
  * @property {Record<string, string>} nextGameIds - Map of vote option to gameId (for when option is selected)
  * @property {string|null} selectedNextGame - Which Next Game option was selected (null if not yet selected)
@@ -26,6 +45,31 @@ import { randomUUID } from 'crypto';
 
 // Store game state per room
 const rooms = new Map();
+
+// Track deletion timeouts for rooms (to prevent immediate deletion during navigation)
+const roomDeletionTimeouts = new Map();
+
+// Predefined color palette for users (distinct colors)
+const USER_COLORS = [
+  '#66C0F4', // Light blue
+  '#1E90FF', // Dodger blue
+  '#32CD32', // Lime green
+  '#FFD700', // Gold
+  '#FF6347', // Tomato
+  '#9370DB', // Medium purple
+  '#00CED1', // Dark turquoise
+  '#FF69B4', // Hot pink
+  '#FFA500', // Orange
+  '#20B2AA', // Light sea green
+  '#BA55D3', // Medium orchid
+  '#00FA9A', // Medium spring green
+  '#FF1493', // Deep pink
+  '#00BFFF', // Deep sky blue
+  '#FF8C00', // Dark orange
+];
+
+// Track which colors are assigned per room
+const roomColorAssignments = new Map();
 
 /**
  * Get or create game state for a room
@@ -38,13 +82,49 @@ function getRoomState(roomId) {
       currentGameId: "",
       users: {}, // Map of userId -> User
       connectionToUserId: {}, // Map of connectionId -> userId
-      replyCounts: {},
+      leaderboard: [], // Array of LeaderboardEntry
+      roomStatus: 'in_progress', // 'in_progress' or 'completed'
+      currentGameStats: [], // Array of CurrentGameStat
+      correctAnswer: null, // The correct answer for current game
       nextGameVotes: { raw: 0, smart: 0 },
       nextGameIds: { raw: null, smart: null },
       selectedNextGame: null,
     });
+    // Initialize color assignments for this room
+    roomColorAssignments.set(roomId, new Set());
   }
   return rooms.get(roomId);
+}
+
+/**
+ * Assign a unique color to a user in a room
+ * @param {string} roomId - Room ID
+ * @param {string} userId - User ID
+ * @returns {string} Hex color code
+ */
+function assignUserColor(roomId, userId) {
+  const assignedColors = roomColorAssignments.get(roomId) || new Set();
+  const state = getRoomState(roomId);
+  
+  // Check if user already has a color
+  if (state.users[userId] && state.users[userId].color) {
+    return state.users[userId].color;
+  }
+  
+  // Find an available color
+  for (const color of USER_COLORS) {
+    if (!assignedColors.has(color)) {
+      assignedColors.add(color);
+      roomColorAssignments.set(roomId, assignedColors);
+      return color;
+    }
+  }
+  
+  // If all colors are used, generate a random one
+  const randomColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+  assignedColors.add(randomColor);
+  roomColorAssignments.set(roomId, assignedColors);
+  return randomColor;
 }
 
 /**
@@ -96,6 +176,13 @@ wss.on('connection', (ws, req) => {
   const clients = state.clients || new Set();
   state.clients = clients;
   
+  // Cancel any pending deletion timeout for this room (user reconnected)
+  if (roomDeletionTimeouts.has(roomId)) {
+    clearTimeout(roomDeletionTimeouts.get(roomId));
+    roomDeletionTimeouts.delete(roomId);
+    console.log(`[Server] Cancelled deletion timeout for room ${roomId} (user reconnected)`);
+  }
+  
   // Handle duplicate connections from the same userId (multiple tabs)
   // Disconnect any existing connections with the same userId
   if (userId) {
@@ -107,12 +194,9 @@ wss.on('connection', (ws, req) => {
       if (oldUserId && state.users[oldUserId]) {
         state.users[oldUserId].isOnline = false;
         state.users[oldUserId].id = null;
-        // Remove old connection's reply/vote counts
+        // Remove old connection from currentGameStats
         if (state.users[oldUserId].replyOption !== null) {
-          state.replyCounts[state.users[oldUserId].replyOption] = Math.max(0, (state.replyCounts[state.users[oldUserId].replyOption] || 1) - 1);
-          if (state.replyCounts[state.users[oldUserId].replyOption] <= 0) {
-            delete state.replyCounts[state.users[oldUserId].replyOption];
-          }
+          state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== oldUserId);
         }
         if (state.users[oldUserId].nextGameVote) {
           state.nextGameVotes[state.users[oldUserId].nextGameVote] = Math.max(0, (state.nextGameVotes[state.users[oldUserId].nextGameVote] || 1) - 1);
@@ -150,12 +234,16 @@ wss.on('connection', (ws, req) => {
       userId: persistentUserId,
       name: `User ${persistentUserId.slice(-6)}`, // Simple name from user ID
       score: 0,
+      failedGuesses: 0,
+      totalGuesses: 0,
+      color: assignUserColor(roomId, persistentUserId),
       isOnline: true,
       hasReplied: false,
       replyOption: null,
       nextGameVote: null,
     };
     state.users[persistentUserId] = user;
+    console.log(`New user created: ${persistentUserId} (userId was ${userId ? 'provided' : 'null'}) with color ${user.color}`);
   }
   
   // Map connectionId to userId for quick lookup
@@ -168,7 +256,10 @@ wss.on('connection', (ws, req) => {
     gameState: {
       currentGameId: state.currentGameId,
       users: state.users,
-      replyCounts: { ...state.replyCounts },
+      leaderboard: [...state.leaderboard],
+      roomStatus: state.roomStatus,
+      currentGameStats: [...state.currentGameStats],
+      correctAnswer: state.correctAnswer,
       nextGameVotes: { ...state.nextGameVotes },
       nextGameIds: { ...state.nextGameIds },
       selectedNextGame: state.selectedNextGame,
@@ -182,7 +273,10 @@ wss.on('connection', (ws, req) => {
     gameState: {
       currentGameId: state.currentGameId,
       users: state.users,
-      replyCounts: { ...state.replyCounts },
+      leaderboard: [...state.leaderboard],
+      roomStatus: state.roomStatus,
+      currentGameStats: [...state.currentGameStats],
+      correctAnswer: state.correctAnswer,
       nextGameVotes: { ...state.nextGameVotes },
       nextGameIds: { ...state.nextGameIds },
       selectedNextGame: state.selectedNextGame,
@@ -201,6 +295,9 @@ wss.on('connection', (ws, req) => {
           break;
         case "correct-guess":
           handleCorrectGuess(data, ws, state, clients);
+          break;
+        case "wrong-guess":
+          handleWrongGuess(data, ws, state, clients);
           break;
         case "next-game":
           handleNextGame(data, ws, state, clients);
@@ -237,14 +334,11 @@ wss.on('connection', (ws, req) => {
     const userId = state.connectionToUserId[connectionId];
     const user = userId ? state.users[userId] : null;
     
-    // Remove user's reply and vote counts if they had any (only count online users)
+    // Remove user from currentGameStats if they had replied (only count online users)
     if (user && user.isOnline) {
-      if (user.replyOption !== null) {
-        state.replyCounts[user.replyOption] = Math.max(0, (state.replyCounts[user.replyOption] || 1) - 1);
-        if (state.replyCounts[user.replyOption] <= 0) {
-          delete state.replyCounts[user.replyOption];
-        }
-      }
+      // Remove from currentGameStats
+      state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== userId);
+      
       if (user.nextGameVote) {
         state.nextGameVotes[user.nextGameVote] = Math.max(0, (state.nextGameVotes[user.nextGameVote] || 1) - 1);
         if (state.nextGameVotes[user.nextGameVote] <= 0) {
@@ -275,17 +369,66 @@ wss.on('connection', (ws, req) => {
       gameState: {
         currentGameId: state.currentGameId,
         users: state.users,
-        replyCounts: { ...state.replyCounts },
+        leaderboard: [...state.leaderboard],
+        roomStatus: state.roomStatus,
+        currentGameStats: [...state.currentGameStats],
+        correctAnswer: state.correctAnswer,
         nextGameVotes: { ...state.nextGameVotes },
         nextGameIds: { ...state.nextGameIds },
         selectedNextGame: state.selectedNextGame,
       },
     });
 
-    // Clean up empty rooms
+    // Schedule room deletion with timeout (to allow reconnection during navigation)
     if (clients.size === 0) {
-      rooms.delete(roomId);
-      console.log(`Room ${roomId} deleted (empty)`);
+      // Clear any existing deletion timeout for this room
+      if (roomDeletionTimeouts.has(roomId)) {
+        clearTimeout(roomDeletionTimeouts.get(roomId));
+        roomDeletionTimeouts.delete(roomId);
+      }
+      
+      // Check if there are any users in the room (even if offline)
+      const hasUsers = Object.keys(state.users).length > 0;
+      
+      if (hasUsers) {
+        // Room has users (even if offline), schedule deletion after timeout
+        // This allows users to reconnect during page navigation
+        const timeoutId = setTimeout(() => {
+          // Check again if room is still empty
+          const currentState = rooms.get(roomId);
+          if (currentState && currentState.clients && currentState.clients.size === 0) {
+            // Check if any users reconnected (are online)
+            const hasOnlineUsers = Object.values(currentState.users).some(u => u.isOnline);
+            if (!hasOnlineUsers) {
+              // No online users, safe to delete
+              rooms.delete(roomId);
+              roomColorAssignments.delete(roomId);
+              roomDeletionTimeouts.delete(roomId);
+              console.log(`Room ${roomId} deleted after timeout (no reconnections)`);
+            } else {
+              // Users reconnected, keep the room
+              console.log(`Room ${roomId} kept (users reconnected)`);
+              roomDeletionTimeouts.delete(roomId);
+            }
+          } else {
+            // Room has clients now, keep it
+            console.log(`Room ${roomId} kept (has clients)`);
+            roomDeletionTimeouts.delete(roomId);
+          }
+        }, 30000); // 30 second timeout
+        
+        roomDeletionTimeouts.set(roomId, timeoutId);
+        console.log(`Room ${roomId} scheduled for deletion in 30s (all users disconnected)`);
+      } else {
+        // Room has no users at all, delete immediately
+        rooms.delete(roomId);
+        roomColorAssignments.delete(roomId);
+        if (roomDeletionTimeouts.has(roomId)) {
+          clearTimeout(roomDeletionTimeouts.get(roomId));
+          roomDeletionTimeouts.delete(roomId);
+        }
+        console.log(`Room ${roomId} deleted immediately (no users)`);
+      }
     }
   });
 
@@ -293,6 +436,22 @@ wss.on('connection', (ws, req) => {
     console.error(`Error for connection ${connectionId}:`, error);
   });
 });
+
+/**
+ * Update leaderboard entry for a user
+ */
+function updateLeaderboardEntry(state, userId, isCorrect) {
+  let entry = state.leaderboard.find(e => e.userId === userId);
+  if (!entry) {
+    entry = { userId, correctAnswers: 0, failedAnswers: 0 };
+    state.leaderboard.push(entry);
+  }
+  if (isCorrect) {
+    entry.correctAnswers += 1;
+  } else {
+    entry.failedAnswers += 1;
+  }
+}
 
 /**
  * Handle a guess from a user
@@ -303,77 +462,145 @@ function handleGuess(data, ws, state, clients) {
   const user = state.users[userId];
   if (!user || !user.isOnline) return;
 
-  // Track reply option
-  const guessValue = data.guess;
-  if (user.replyOption !== null) {
-    // User changed their reply - decrement old option count
-    state.replyCounts[user.replyOption] = (state.replyCounts[user.replyOption] || 1) - 1;
-    if (state.replyCounts[user.replyOption] <= 0) {
-      delete state.replyCounts[user.replyOption];
-    }
+  // Check if this is a new game (gameId changed)
+  const isNewGame = data.gameId && state.currentGameId !== data.gameId;
+  
+  // If room is completed and it's NOT a new game, don't allow new guesses
+  if (state.roomStatus === 'completed' && !isNewGame) {
+    console.log(`[Server] Room is completed, ignoring guess from ${userId}`);
+    return;
   }
   
+  // Store correct answer if provided and gameId changed
+  if (data.correctAnswer !== null && data.correctAnswer !== undefined) {
+    if (isNewGame) {
+      // New game - reset current game stats (room status should already be in_progress from vote)
+      console.log(`[Server] New game detected: ${state.currentGameId} -> ${data.gameId}`);
+      state.currentGameId = data.gameId;
+      state.currentGameStats = [];
+      state.roomStatus = 'in_progress'; // Ensure it's in_progress
+      state.correctAnswer = data.correctAnswer;
+      // Reset all users' reply status for new game
+      Object.values(state.users).forEach(u => {
+        u.hasReplied = false;
+        u.replyOption = null;
+      });
+    } else if (state.correctAnswer === null) {
+      // Same game but correct answer not set yet
+      state.correctAnswer = data.correctAnswer;
+    }
+  } else if (isNewGame) {
+    // New game detected even without correctAnswer - ensure room status is reset
+    console.log(`[Server] New game detected: ${state.currentGameId} -> ${data.gameId}, resetting room status`);
+    state.currentGameId = data.gameId;
+    state.currentGameStats = [];
+    state.roomStatus = 'in_progress';
+    state.correctAnswer = null;
+    // Reset all users' reply status for new game
+    Object.values(state.users).forEach(u => {
+      u.hasReplied = false;
+      u.replyOption = null;
+    });
+  }
+
+  const guessValue = data.guess;
+  
+  // Remove old entry from currentGameStats if user changed their answer
+  state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== userId);
+  
+  // Add new entry to currentGameStats FIRST
+  state.currentGameStats.push({
+    userId: userId,
+    answerValue: guessValue,
+  });
+  
+  // Update user's reply status
   user.replyOption = guessValue;
   user.hasReplied = true;
-  
-  // Increment count for this option
-  state.replyCounts[guessValue] = (state.replyCounts[guessValue] || 0) + 1;
 
-  // Broadcast the guess and updated reply counts to all users
-  broadcast(clients, {
-    type: "guess",
-    userId: ws.connectionId,
-    userName: user.name,
-    guess: data.guess,
-    gameId: data.gameId,
-    replyCounts: { ...state.replyCounts },
-    gameState: {
-      currentGameId: state.currentGameId,
-      users: state.users,
-      replyCounts: { ...state.replyCounts },
-      nextGameVotes: { ...state.nextGameVotes },
-      nextGameIds: { ...state.nextGameIds },
-    },
-  }, ws);
+  // NOW check if all online users have replied (after adding current user's entry)
+  const allUsers = Object.values(state.users);
+  const onlineUsers = allUsers.filter(u => u.isOnline);
   
-  // Also send reply-counts-update to all users for UI updates
+  // Verify that currentGameStats contains entries for all online users
+  const statsUserIds = new Set(state.currentGameStats.map(stat => stat.userId));
+  const onlineUserIds = new Set(onlineUsers.map(u => u.userId));
+  
+  // A user has actually replied if they are in currentGameStats
+  // (hasReplied flag might be stale from previous game)
+  const usersWhoActuallyReplied = onlineUsers.filter(u => statsUserIds.has(u.userId));
+  
+  // Check if all online users have actually replied (are in currentGameStats)
+  const allStatsAreOnline = state.currentGameStats.length > 0 &&
+    state.currentGameStats.every(stat => onlineUserIds.has(stat.userId));
+  
+  // All users have replied if: all online users are in stats, all stats are for online users, and counts match
+  const allReplied = onlineUsers.length > 0 &&
+    usersWhoActuallyReplied.length === onlineUsers.length &&
+    allStatsAreOnline &&
+    state.currentGameStats.length === onlineUsers.length;
+  
+  // Log detailed information for debugging
+  const hasRepliedUsers = onlineUsers.filter(u => u.hasReplied);
+  const hasRepliedUserIds = hasRepliedUsers.map(u => u.userId);
+  console.log(`[Server] Guess from ${userId}: onlineUsers=${onlineUsers.length}, hasReplied=${hasRepliedUsers.length}, currentGameStats=${state.currentGameStats.length}, allReplied=${allReplied}`);
+  if (!allReplied) {
+    console.log(`[Server] Details: onlineUserIds=${Array.from(onlineUserIds)}, statsUserIds=${Array.from(statsUserIds)}`);
+    console.log(`[Server] HasReplied userIds: ${hasRepliedUserIds.join(',')}`);
+    console.log(`[Server] Breakdown: allOnlineUsersInStats=${allOnlineUsersInStats}, allStatsAreOnline=${allStatsAreOnline}, lengthMatch=${state.currentGameStats.length === onlineUsers.length}`);
+    
+    // Check each online user's status
+    onlineUsers.forEach(u => {
+      const inStats = statsUserIds.has(u.userId);
+      console.log(`[Server] User ${u.userId}: hasReplied=${u.hasReplied}, inStats=${inStats}, isOnline=${u.isOnline}`);
+    });
+  }
+
+  // If all users replied, mark room as completed and update leaderboard
+  if (allReplied && state.roomStatus === 'in_progress' && state.correctAnswer !== null) {
+    console.log(`[Server] All users replied, marking room as completed`);
+    state.roomStatus = 'completed';
+    
+    // Update leaderboard for all users based on their answers
+    state.currentGameStats.forEach(stat => {
+      const isCorrect = stat.answerValue === state.correctAnswer;
+      updateLeaderboardEntry(state, stat.userId, isCorrect);
+    });
+  }
+
+  // Broadcast updated game state
   broadcast(clients, {
     type: "reply-counts-update",
-    replyCounts: { ...state.replyCounts },
     gameState: {
       currentGameId: state.currentGameId,
       users: state.users,
-      replyCounts: { ...state.replyCounts },
+      leaderboard: [...state.leaderboard],
+      roomStatus: state.roomStatus,
+      currentGameStats: [...state.currentGameStats],
+      correctAnswer: state.correctAnswer,
       nextGameVotes: { ...state.nextGameVotes },
       nextGameIds: { ...state.nextGameIds },
+      selectedNextGame: state.selectedNextGame,
     },
   });
 }
 
 /**
- * Handle correct guess - update score
+ * Handle correct guess - DEPRECATED: Now handled in handleGuess
+ * Kept for backward compatibility but does nothing
  */
 function handleCorrectGuess(data, ws, state, clients) {
-  const userId = state.connectionToUserId[ws.connectionId];
-  if (!userId) return;
-  const user = state.users[userId];
-  if (!user || !user.isOnline) return;
+  // No longer needed - leaderboard is updated in handleGuess when room is completed
+  console.log(`[Server] handleCorrectGuess called but is deprecated - leaderboard updated in handleGuess`);
+}
 
-  user.score += 1;
-  user.hasReplied = true;
-
-  // Broadcast updated leaderboard
-  broadcast(clients, {
-    type: "score-update",
-    userId: userId,
-    connectionId: ws.connectionId,
-    userName: user.name,
-    newScore: user.score,
-    gameState: {
-      currentGameId: state.currentGameId,
-      users: state.users,
-    },
-  });
+/**
+ * Handle wrong guess - DEPRECATED: Now handled in handleGuess
+ * Kept for backward compatibility but does nothing
+ */
+function handleWrongGuess(data, ws, state, clients) {
+  // No longer needed - leaderboard is updated in handleGuess when room is completed
+  console.log(`[Server] handleWrongGuess called but is deprecated - leaderboard updated in handleGuess`);
 }
 
 /**
@@ -426,9 +653,13 @@ function handleNextGameVote(data, ws, state, clients) {
       gameState: {
         currentGameId: state.currentGameId,
         users: state.users,
-        replyCounts: { ...state.replyCounts },
+        leaderboard: [...state.leaderboard],
+        roomStatus: state.roomStatus,
+        currentGameStats: [...state.currentGameStats],
+        correctAnswer: state.correctAnswer,
         nextGameVotes: { ...state.nextGameVotes },
         nextGameIds: { ...state.nextGameIds },
+        selectedNextGame: state.selectedNextGame,
       },
     };
     
@@ -446,6 +677,19 @@ function handleNextGameVote(data, ws, state, clients) {
     // Get the gameId for the selected option
     const selectedGameId = state.nextGameIds[selectedOption] || state.currentGameId;
     
+    // Reset room status and game state immediately when vote completes
+    state.currentGameStats = [];
+    state.roomStatus = 'in_progress';
+    state.correctAnswer = null;
+    Object.values(state.users).forEach(u => {
+      u.nextGameVote = null;
+      u.hasReplied = false;
+      u.replyOption = null;
+    });
+    
+    // Update current game ID
+    state.currentGameId = selectedGameId;
+    
     // Wait 1 second before activating
     setTimeout(() => {
       // Broadcast activation
@@ -454,28 +698,22 @@ function handleNextGameVote(data, ws, state, clients) {
         option: selectedOption,
         gameId: selectedGameId,
         gameState: {
-          currentGameId: state.currentGameId,
+          currentGameId: selectedGameId,
           users: state.users,
-          replyCounts: { ...state.replyCounts },
-          nextGameVotes: { ...state.nextGameVotes },
-          nextGameIds: { ...state.nextGameIds },
-          selectedNextGame: selectedOption,
+          leaderboard: [...state.leaderboard],
+          roomStatus: 'in_progress',
+          currentGameStats: [],
+          correctAnswer: null,
+          nextGameVotes: { raw: 0, smart: 0 },
+          nextGameIds: { raw: null, smart: null },
+          selectedNextGame: null,
         },
       });
       
-      // Reset votes and reply counts for next game
+      // Reset votes for next round
       state.nextGameVotes = { raw: 0, smart: 0 };
       state.nextGameIds = { raw: null, smart: null };
-      state.replyCounts = {};
       state.selectedNextGame = null;
-      Object.values(state.users).forEach(u => {
-        u.nextGameVote = null;
-        u.hasReplied = false;
-        u.replyOption = null;
-      });
-      
-      // Update current game ID
-      state.currentGameId = selectedGameId;
     }, 1000);
   }
 }
@@ -490,6 +728,15 @@ function handleUserReady(data, ws, state, clients) {
   if (!user || !user.isOnline) return;
 
   user.hasReplied = data.hasReplied !== undefined ? data.hasReplied : true;
+  
+  // Update nickname if provided
+  if (data.nickname && typeof data.nickname === 'string' && data.nickname.trim()) {
+    const newNickname = data.nickname.trim();
+    if (newNickname !== user.name) {
+      user.name = newNickname;
+      console.log(`[Server] User ${userId} updated nickname to: ${newNickname}`);
+    }
+  }
 
   // Broadcast updated reply status
   broadcast(clients, {
@@ -501,7 +748,10 @@ function handleUserReady(data, ws, state, clients) {
     gameState: {
       currentGameId: state.currentGameId,
       users: state.users,
-      replyCounts: { ...state.replyCounts },
+      leaderboard: [...state.leaderboard],
+      roomStatus: state.roomStatus,
+      currentGameStats: [...state.currentGameStats],
+      correctAnswer: state.correctAnswer,
       nextGameVotes: { ...state.nextGameVotes },
       nextGameIds: { ...state.nextGameIds },
       selectedNextGame: state.selectedNextGame,
@@ -513,9 +763,14 @@ function handleUserReady(data, ws, state, clients) {
  * Handle leaderboard reset (anyone can reset)
  */
 function handleResetLeaderboard(ws, state, clients) {
-  // Reset all scores
+  // Reset leaderboard array
+  state.leaderboard = [];
+  
+  // Reset user scores (for backward compatibility)
   Object.values(state.users).forEach(user => {
     user.score = 0;
+    user.failedGuesses = 0;
+    user.totalGuesses = 0;
     user.hasReplied = false;
   });
 
@@ -525,6 +780,13 @@ function handleResetLeaderboard(ws, state, clients) {
     gameState: {
       currentGameId: state.currentGameId,
       users: state.users,
+      leaderboard: [...state.leaderboard],
+      roomStatus: state.roomStatus,
+      currentGameStats: [...state.currentGameStats],
+      correctAnswer: state.correctAnswer,
+      nextGameVotes: { ...state.nextGameVotes },
+      nextGameIds: { ...state.nextGameIds },
+      selectedNextGame: state.selectedNextGame,
     },
   });
 }
