@@ -30,10 +30,7 @@
   ],
   "permissions": [],
   "host_permissions": [
-    "http://localhost/*",
-    "https://*/*",
-    "wss://*/*",
-    "ws://*/*"
+    "wss://steam-review-guesser.onrender.com/*"
   ],
   "web_accessible_resources": [
     {

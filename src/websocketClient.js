@@ -21,7 +21,7 @@ class WebSocketClient {
 
   /**
    * Connect to WebSocket server
-   * @param {string} serverUrl - WebSocket server URL (e.g., 'ws://localhost:8080' or 'wss://your-server.com')
+   * @param {string} serverUrl - WebSocket server URL (must be wss://steam-review-guesser.onrender.com)
    * @param {string} roomId - Room ID to join
    * @param {string} userId - Optional persistent user ID for reconnection
    * @returns {Promise<void>}
@@ -29,6 +29,23 @@ class WebSocketClient {
   async connect(serverUrl, roomId, userId = null) {
     return new Promise((resolve, reject) => {
       try {
+        // Validate server URL - only allow the configured Render URL
+        const allowedHost = 'steam-review-guesser.onrender.com';
+        try {
+          const url = new URL(serverUrl);
+          if (url.hostname !== allowedHost) {
+            const error = new Error(`Connection to ${url.hostname} is not allowed. Only connections to ${allowedHost} are permitted.`);
+            console.error('[WebSocket]', error.message);
+            reject(error);
+            return;
+          }
+        } catch (urlError) {
+          const error = new Error(`Invalid server URL format: ${serverUrl}`);
+          console.error('[WebSocket]', error.message);
+          reject(error);
+          return;
+        }
+        
         this.serverUrl = serverUrl;
         this.roomId = roomId;
         // Store userId for reconnection

@@ -6,8 +6,11 @@
 (function (root) {
   const ns = (root.ReviewGuesser = root.ReviewGuesser || {});
   
-  // Get default server URL from config
-  const DEFAULT_SERVER_URL = (ns.config && ns.config.DEFAULT_SERVER_URL) || 'ws://localhost:8080';
+  // Get default server URL from config (required)
+  const DEFAULT_SERVER_URL = (ns.config && ns.config.DEFAULT_SERVER_URL);
+  if (!DEFAULT_SERVER_URL) {
+    console.error('[Co-op Manager] DEFAULT_SERVER_URL not configured in config.js');
+  }
   
   // Co-op state
   const coopState = {

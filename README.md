@@ -23,12 +23,39 @@ Jonas Review Guesser is a Chrome extension that turns Steam into a review guessi
 
 The extension includes a co-op multiplayer mode that allows multiple users to play together in the same room. Users can share a room code to connect and play simultaneously.
 
+### Configuring the Server URL
+
+The extension is configured to connect to a specific WebSocket server. To change the server URL:
+
+1. **Open `src/config.js`** in the extension source code
+2. **Update the `DEFAULT_SERVER_URL`** value:
+   ```javascript
+   DEFAULT_SERVER_URL: 'wss://your-server.com',
+   ```
+   - Use `wss://` for secure WebSocket connections (HTTPS)
+   - Use `ws://` for unsecured WebSocket connections (HTTP)
+   - Include the port if needed: `wss://your-server.com:443`
+
+3. **Update `manifest.json`** to match:
+   - Update the `host_permissions` section with your server URL:
+   ```json
+   "host_permissions": [
+     "wss://your-server.com/*"
+   ]
+   ```
+
+4. **Reload the extension** in Chrome (`chrome://extensions/` → click Reload)
+
+**Current default:** The extension is configured to connect to `wss://steam-review-guesser.onrender.com`
+
+**Note:** The extension includes URL validation that only allows connections to the configured server domain for security.
+
 ### Important: Self-Signed Certificate Setup
 
 If you're using the co-op feature with a self-signed SSL certificate (for development/testing), you **must** allow the certificate in your browser first:
 
 1. **Before connecting from Steam pages**, visit the WebSocket server URL directly in your browser:
-   - Example: `https://31.43.142.49:443`
+   - Example: `https://your-server.com:443`
 2. **Accept the security warning**:
    - Click "Advanced" or "Show Details"
    - Click "Proceed to [server address]" or "Accept the Risk and Continue"
