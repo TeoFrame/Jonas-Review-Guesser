@@ -282,8 +282,9 @@
               if (coopState.client && coopState.isConnected) {
                 // Send a dummy guess to initialize the game (the actual guess value doesn't matter here)
                 // The server will recognize this as a new game and set currentGameId
+                // Use -1 as a sentinel value to indicate this is initialization (not a real guess)
                 const gameIdStr = currentPageAppId.toString();
-                coopState.client.sendGuess(0, gameIdStr, null);
+                coopState.client.sendGuess(-1, gameIdStr, null);
                 console.log('[Co-op] Sent initial game ID to server:', gameIdStr);
               } else {
                 console.warn('[Co-op] Client not connected when trying to send initial game ID');

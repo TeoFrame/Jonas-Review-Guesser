@@ -513,11 +513,15 @@
         }
         
         // Calculate reply counts from currentGameStats
+        // Filter out initialization guesses (sentinel value -1)
         const replyCounts = {};
         if (gameState.currentGameStats && Array.isArray(gameState.currentGameStats)) {
           gameState.currentGameStats.forEach(stat => {
             const value = stat.answerValue;
-            replyCounts[value] = (replyCounts[value] || 0) + 1;
+            // Skip initialization guesses (sentinel value -1)
+            if (value !== -1 && value !== null && value !== undefined) {
+              replyCounts[value] = (replyCounts[value] || 0) + 1;
+            }
           });
         }
         
@@ -609,11 +613,22 @@
         const state = ns.coop.getState();
         if (!state.gameState || !state.gameState.users) return;
         
+        // IMPORTANT: Only show results if room status is completed
+        // Don't show results if room is still in_progress
+        if (state.gameState.roomStatus !== 'completed') {
+          return;
+        }
+        
+        // Also check that correctAnswer is set
+        if (state.gameState.correctAnswer === null || state.gameState.correctAnswer === undefined) {
+          return;
+        }
+        
         const allUsers = Object.values(state.gameState.users);
         const onlineUsers = allUsers.filter(u => u.isOnline);
         const allReplied = onlineUsers.length > 0 && onlineUsers.every(u => u.hasReplied);
         
-        // Only show results if ALL users have replied
+        // Only show results if ALL users have replied AND room is completed
         if (allReplied && onlineUsers.length > 0) {
           wrap.dataset.resultsShown = '1';
           
@@ -625,7 +640,7 @@
           
           if (currentUserId && state.gameState.users[currentUserId]) {
             const userPick = state.gameState.users[currentUserId].replyOption;
-            if (userPick !== null) {
+            if (userPick !== null && userPick !== undefined) {
               console.log('[Co-op] All users replied, showing results for user:', currentUserId, 'pick:', userPick);
               showResultsFn(btns, correctAnswer, userPick);
             }
@@ -738,13 +753,13 @@
       
       // Check if this is a new game (gameId changed)
       const isNewGame = lastGameId !== null && gameState.currentGameId !== lastGameId;
-        if (isNewGame || lastGameId === null) {
-          lastGameId = gameState.currentGameId;
-          console.log('[Co-op] New game detected, resetting UI state');
-          
-          // Reset UI state for new game
-          const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
-          wraps.forEach(wrap => {
+      if (isNewGame || lastGameId === null) {
+        lastGameId = gameState.currentGameId;
+        console.log('[Co-op] New game detected, resetting UI state');
+        
+        // Reset UI state for new game
+        const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
+        wraps.forEach(wrap => {
           wrap.dataset.resultsShown = '0'; // Reset results shown flag
           const buttons = wrap.querySelectorAll('.ext-guess-btn');
           buttons.forEach(btn => {
@@ -755,14 +770,32 @@
           });
         });
       }
+      
+      // IMPORTANT: If room status is in_progress, ensure we don't show results
+      // Clear any correct/wrong highlighting that might be left over
+      if (gameState.roomStatus === 'in_progress') {
+        const wraps = document.querySelectorAll('.ext-steam-guess[data-truecount]');
+        wraps.forEach(wrap => {
+          wrap.dataset.resultsShown = '0'; // Reset results shown flag
+          const buttons = wrap.querySelectorAll('.ext-guess-btn');
+          buttons.forEach(btn => {
+            btn.classList.remove("correct", "wrong");
+            // Keep user-selected class if user has made a selection, but remove correct/wrong
+          });
+        });
+      }
         
         // Calculate reply counts from currentGameStats
+        // Filter out initialization guesses (sentinel value -1)
         const replyCounts = {};
         if (gameState.currentGameStats && Array.isArray(gameState.currentGameStats)) {
           console.log('[Co-op] Processing currentGameStats:', gameState.currentGameStats);
           gameState.currentGameStats.forEach(stat => {
             const value = stat.answerValue;
-            replyCounts[value] = (replyCounts[value] || 0) + 1;
+            // Skip initialization guesses (sentinel value -1)
+            if (value !== -1 && value !== null && value !== undefined) {
+              replyCounts[value] = (replyCounts[value] || 0) + 1;
+            }
           });
           console.log('[Co-op] Calculated replyCounts:', replyCounts);
         } else {

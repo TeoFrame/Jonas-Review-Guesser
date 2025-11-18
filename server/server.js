@@ -560,18 +560,28 @@ function handleGuess(data, ws, state, clients) {
 
   const guessValue = data.guess;
   
-  // Remove old entry from currentGameStats if user changed their answer
-  state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== userId);
+  // Only add to currentGameStats if this is a real guess (not just game initialization)
+  // If correctAnswer is null, it means the game hasn't started yet, so don't count this guess
+  // Use -1 as a sentinel value to indicate initialization (not a real guess)
+  const isInitializationGuess = isNewGame && state.correctAnswer === null && guessValue === -1;
   
-  // Add new entry to currentGameStats FIRST
-  state.currentGameStats.push({
-    userId: userId,
-    answerValue: guessValue,
-  });
-  
-  // Update user's reply status
-  user.replyOption = guessValue;
-  user.hasReplied = true;
+  if (!isInitializationGuess) {
+    // Remove old entry from currentGameStats if user changed their answer
+    state.currentGameStats = state.currentGameStats.filter(stat => stat.userId !== userId);
+    
+    // Add new entry to currentGameStats FIRST
+    state.currentGameStats.push({
+      userId: userId,
+      answerValue: guessValue,
+    });
+    
+    // Update user's reply status
+    user.replyOption = guessValue;
+    user.hasReplied = true;
+  } else {
+    // This is just initialization - don't add to stats, but still update gameId
+    console.log(`[Server] Ignoring initialization guess (value 0) from ${userId} for game ${data.gameId}`);
+  }
 
   // NOW check if all online users have replied (after adding current user's entry)
   const allUsers = Object.values(state.users);
