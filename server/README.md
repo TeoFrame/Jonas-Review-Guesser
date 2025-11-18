@@ -30,15 +30,17 @@ Or for production:
 npm start
 ```
 
-The server requires SSL certificates and will run on `wss://` (secure WebSocket).
+The server supports both HTTP and HTTPS. HTTPS is used automatically when SSL certificates are provided.
 
 ### 3. Environment Variables
 
-- `PORT` - Server port (default: 443)
-- `SSL_KEY_PATH` - Path to SSL private key file (required)
-- `SSL_CERT_PATH` - Path to SSL certificate file (required)
+- `PORT` - Server port (default: 443 for HTTPS, 3000 for HTTP)
+- `SSL_KEY_PATH` - Path to SSL private key file (optional)
+- `SSL_CERT_PATH` - Path to SSL certificate file (optional)
 
-**SSL/WSS is required (for HTTPS pages like Steam):**
+**HTTPS Setup (Optional):**
+
+The server will use HTTPS if both `SSL_KEY_PATH` and `SSL_CERT_PATH` environment variables are set **and** the certificate files exist. Otherwise, it will use HTTP.
 
 1. **Generate SSL certificates** (self-signed for development):
    ```bash
@@ -65,6 +67,7 @@ The server requires SSL certificates and will run on `wss://` (secure WebSocket)
 
 **Important Notes:**
 
+- **HTTPS is recommended** for production deployments, especially when connecting from HTTPS pages like Steam.
 - **Self-signed certificates**: Browsers will show a security warning when connecting to a server with self-signed certificates. Users must:
   1. First visit the WebSocket URL directly in their browser (e.g., `https://31.43.142.49:443`) 
   2. Click "Advanced" and accept the security warning to allow the certificate
@@ -72,7 +75,7 @@ The server requires SSL certificates and will run on `wss://` (secure WebSocket)
   
 - **Production**: For production, use certificates from a trusted Certificate Authority (e.g., Let's Encrypt) to avoid browser warnings.
 
-The server requires SSL certificates to start. It will exit with an error if SSL_KEY_PATH or SSL_CERT_PATH are not set.
+- **HTTP mode**: If certificates are not provided, the server will run in HTTP mode on port 3000 (or the port specified by `PORT`). This is useful for local development but may not work with HTTPS pages due to mixed content restrictions.
 
 ## Usage
 
@@ -84,7 +87,7 @@ Connect to the server with a room ID:
 wss://your-server.com:443/?room=ROOM_CODE
 ```
 
-Note: The server only supports secure WebSocket (wss://) connections.
+Note: The server supports both `ws://` (HTTP) and `wss://` (HTTPS) connections. Use `wss://` when certificates are configured, or `ws://` for HTTP mode.
 
 ### Message Protocol
 
@@ -120,8 +123,11 @@ Any Node.js hosting platform that supports WebSockets:
 
 ## Local Testing
 
-1. Start the server: `npm run dev`
-2. Update Chrome extension to connect to `ws://localhost:8080`
+1. Start the server: `npm run dev` (will auto-generate certificates and use HTTPS)
+   - Or start without certificates: `npm start` (will use HTTP on port 3000)
+2. Update Chrome extension to connect to:
+   - `wss://localhost:443` (if using HTTPS)
+   - `ws://localhost:3000` (if using HTTP)
 3. Test with multiple browser windows
 
 ## Production

@@ -1,6 +1,7 @@
 import { WebSocketServer } from 'ws';
 import { randomUUID } from 'crypto';
 import https from 'https';
+import http from 'http';
 import fs from 'fs';
 
 /**
@@ -144,44 +145,73 @@ function broadcast(clients, message, exclude = null) {
   });
 }
 
-const PORT = process.env.PORT || 443;
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 
-// SSL is required - check if certificates are provided
-if (!SSL_KEY_PATH || !SSL_CERT_PATH) {
-  console.error('ERROR: SSL certificates are required!');
-  console.error('Please set SSL_KEY_PATH and SSL_CERT_PATH environment variables.');
-  console.error('Example:');
-  console.error('  export SSL_KEY_PATH=/path/to/private.key');
-  console.error('  export SSL_CERT_PATH=/path/to/certificate.crt');
-  process.exit(1);
+// Check if SSL certificates are available (env vars set AND files exist)
+let useHttps = false;
+let key, cert;
+
+if (SSL_KEY_PATH && SSL_CERT_PATH) {
+  try {
+    // Check if certificate files exist
+    if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+      // Read SSL certificates
+      key = fs.readFileSync(SSL_KEY_PATH, 'utf8');
+      cert = fs.readFileSync(SSL_CERT_PATH, 'utf8');
+      useHttps = true;
+      console.log('SSL certificates found, using HTTPS');
+    } else {
+      console.log('SSL certificate files not found, using HTTP');
+      if (!fs.existsSync(SSL_KEY_PATH)) {
+        console.log(`  SSL_KEY_PATH file not found: ${SSL_KEY_PATH}`);
+      }
+      if (!fs.existsSync(SSL_CERT_PATH)) {
+        console.log(`  SSL_CERT_PATH file not found: ${SSL_CERT_PATH}`);
+      }
+    }
+  } catch (error) {
+    console.log('Error reading SSL certificates, using HTTP:', error.message);
+    useHttps = false;
+  }
+} else {
+  console.log('SSL certificates not configured, using HTTP');
+  if (!SSL_KEY_PATH) {
+    console.log('  SSL_KEY_PATH environment variable not set');
+  }
+  if (!SSL_CERT_PATH) {
+    console.log('  SSL_CERT_PATH environment variable not set');
+  }
 }
+
+// Set default port based on protocol
+const PORT = process.env.PORT || (useHttps ? 443 : 3000);
 
 let server;
 let wss;
 
-try {
-  // Read SSL certificates
-  const key = fs.readFileSync(SSL_KEY_PATH, 'utf8');
-  const cert = fs.readFileSync(SSL_CERT_PATH, 'utf8');
-  
+if (useHttps) {
   // Create HTTPS server
   server = https.createServer({ key, cert });
   wss = new WebSocketServer({ server });
   
   server.listen(PORT, () => {
-    console.log(`WebSocket server running on wss://0.0.0.0:${PORT} (SSL required)`);
+    console.log(`WebSocket server running on wss://0.0.0.0:${PORT} (HTTPS)`);
   });
-} catch (error) {
-  console.error('ERROR: Failed to load SSL certificates:', error.message);
-  console.error('Please ensure SSL_KEY_PATH and SSL_CERT_PATH point to valid certificate files.');
-  process.exit(1);
+} else {
+  // Create HTTP server
+  server = http.createServer();
+  wss = new WebSocketServer({ server });
+  
+  server.listen(PORT, () => {
+    console.log(`WebSocket server running on ws://0.0.0.0:${PORT} (HTTP)`);
+  });
 }
 
 wss.on('connection', (ws, req) => {
   // Extract room ID and user info from URL query parameters
-  const url = new URL(req.url, `https://${req.headers.host}`);
+  const protocol = useHttps ? 'https' : 'http';
+  const url = new URL(req.url, `${protocol}://${req.headers.host}`);
   const roomId = url.searchParams.get('room') || 'default';
   let userId = url.searchParams.get('userId');
   
